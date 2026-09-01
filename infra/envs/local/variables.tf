@@ -14,4 +14,3 @@ variable "localstack_endpoint" {
     error_message = "localstack_endpoint must use localhost or 127.0.0.1."
   }
 }
-

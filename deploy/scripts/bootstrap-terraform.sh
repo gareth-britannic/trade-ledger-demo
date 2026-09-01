@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-STACK_DIR="${REPO_ROOT}/infra/bootstrap"
+STACK_DIR="${REPO_ROOT}/infra/envs/local"
 LOCALSTACK_ENDPOINT="http://localhost:4566"
 
 for command_name in curl terraform; do
@@ -34,5 +34,5 @@ terraform -chdir="${STACK_DIR}" init
 terraform -chdir="${STACK_DIR}" apply -auto-approve
 
 echo
-echo "LocalStack Terraform initialized successfully."
+echo "LocalStack Terraform applied successfully."
 echo "LocalStack endpoint: ${LOCALSTACK_ENDPOINT}"
