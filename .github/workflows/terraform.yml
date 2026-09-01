@@ -1,32 +1,61 @@
-name: Terraform
+name: CI
 
 on:
   pull_request:
-    paths:
-      - ".github/workflows/terraform.yml"
-      - "infra/**"
   push:
     branches: [main]
-    paths:
-      - ".github/workflows/terraform.yml"
-      - "infra/**"
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  format:
-    name: Format
+  build:
+    name: Build and test .NET
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.400"
+      - name: Restore
+        run: dotnet restore TradeLedger.sln
+      - name: Build
+        run: dotnet build TradeLedger.sln --configuration Release --no-restore
+      - name: Test
+        run: dotnet test TradeLedger.sln --configuration Release --no-build
+
+  lint:
+    name: Lint and validate Terraform
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ""
+      AWS_SECRET_ACCESS_KEY: ""
+      AWS_SESSION_TOKEN: ""
+      AWS_EC2_METADATA_DISABLED: "true"
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.13.5
-      - run: terraform fmt -check -recursive infra
+      - name: Check Terraform formatting
+        run: terraform fmt -check -recursive infra
+      - name: Initialize local environment without a backend
+        run: terraform -chdir=infra/envs/local init -backend=false -input=false -lockfile=readonly
+      - name: Validate local environment
+        run: terraform -chdir=infra/envs/local validate
+      - name: Initialize AWS environment without a backend
+        run: terraform -chdir=infra/envs/aws init -backend=false -input=false -lockfile=readonly
+      - name: Validate AWS environment
+        run: terraform -chdir=infra/envs/aws validate
 
-  test:
-    name: Test ${{ matrix.directory }}
+  terraform-tests:
+    name: Terraform test ${{ matrix.directory }}
     runs-on: ubuntu-latest
     env:
       AWS_ACCESS_KEY_ID: ""
@@ -45,8 +74,8 @@ jobs:
           - infra/envs/aws
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.13.5
       - name: Initialize without a backend
