@@ -1,0 +1,57 @@
+name: Terraform
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/terraform.yml"
+      - "infra/**"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/terraform.yml"
+      - "infra/**"
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.5
+      - run: terraform fmt -check -recursive infra
+
+  test:
+    name: Test ${{ matrix.directory }}
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ""
+      AWS_SECRET_ACCESS_KEY: ""
+      AWS_SESSION_TOKEN: ""
+      AWS_EC2_METADATA_DISABLED: "true"
+    strategy:
+      fail-fast: false
+      matrix:
+        directory:
+          - infra/modules/network
+          - infra/modules/fill-queue
+          - infra/modules/database
+          - infra/modules/public-api-edge
+          - infra/modules/api-service
+          - infra/envs/aws
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.5
+      - name: Initialize without a backend
+        run: terraform -chdir=${{ matrix.directory }} init -backend=false -input=false -lockfile=readonly
+      - name: Validate configuration
+        run: terraform -chdir=${{ matrix.directory }} validate
+      - name: Run mocked-provider tests
+        run: terraform -chdir=${{ matrix.directory }} test

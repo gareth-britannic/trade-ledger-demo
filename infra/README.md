@@ -1,4 +1,85 @@
-# Local infrastructure
+# Infrastructure
+
+The repository has two intentionally separate Terraform roots:
+
+- `infra/envs/local` is applied to LocalStack and proves the SQS messaging loop.
+- `infra/envs/aws` is a production-shaped, plan-tested AWS reference
+  architecture. It is tested with a mocked provider and has not been deployed.
+
+> **Never deployed:** This AWS reference architecture has never been applied to
+> an AWS account. Do not run `terraform apply` for it casually: NAT Gateway,
+> public IPv4, ALB, WAF, Fargate, RDS, Secrets Manager, CloudWatch, snapshots,
+> SQS requests, and data transfer can all incur charges.
+
+## AWS reference architecture
+
+```mermaid
+flowchart LR
+  Internet -->|HTTPS 443| WAF["AWS WAF"]
+  WAF --> ALB["Public ALB<br/>2 public subnets"]
+  ALB -->|HTTP 8080| ECS["ECS Fargate<br/>2 private app subnets"]
+  ECS -->|PostgreSQL 5432| RDS["Encrypted RDS PostgreSQL<br/>2 isolated DB subnets"]
+  ECS -->|SendMessage only| SQS["SQS FIFO"]
+  SQS --> DLQ["FIFO DLQ"]
+```
+
+Security groups encode the same trust chain: public HTTPS can reach only the
+ALB; ECS accepts traffic only from the ALB security group; RDS accepts
+PostgreSQL only from the ECS security group. ECS tasks receive no public IPs.
+
+The modules are deliberately composed in a flat tree:
+
+| Module | Responsibility |
+| --- | --- |
+| `network` | Two-AZ VPC, public/app/database subnet tiers, routing and NAT |
+| `public-api-edge` | HTTPS ALB, target group, WAF and AWS managed rules |
+| `api-service` | Private Fargate service, logs, IAM and deployment controls |
+| `database` | Private encrypted RDS, managed credentials and deletion controls |
+| `fill-queue` | FIFO queue, FIFO DLQ and redrive policies |
+
+### Test evidence
+
+The Terraform CI workflow does not use AWS credentials. Native Terraform test
+files use a mocked AWS provider to check the planned resource graph:
+
+| Assertion | Test location |
+| --- | --- |
+| Two availability zones and isolated subnet tiers | `modules/network/tests` |
+| FIFO queue with explicit producer deduplication | `modules/fill-queue/tests` |
+| RDS is private, encrypted and deletion-protected | `modules/database/tests` |
+| HTTPS ALB and associated AWS-managed WAF rules | `modules/public-api-edge/tests` |
+| Private ECS tasks and queue-scoped IAM | `modules/api-service/tests` |
+| Internet → ALB → ECS → RDS security-group chain | `envs/aws/tests` |
+
+These tests validate Terraform configuration and architectural invariants. They
+do not claim to verify AWS control-plane or runtime behaviour; that would
+require an AWS deployment. LocalStack integration currently covers SQS only.
+
+### Reference-environment cost and availability choices
+
+| Resource | Reference choice | Cost and availability trade-off |
+| --- | --- | --- |
+| NAT Gateway | One, in the first AZ | Avoids a second hourly NAT charge, but loses zonal NAT resilience and can add cross-AZ data transfer when the task runs in the other AZ. Multiple interface endpoints are not automatically cheaper because each endpoint has per-AZ hourly and data-processing charges. |
+| ECS Fargate | One task, 0.25 vCPU and 0.5 GiB | Smallest supported Fargate size and no autoscaling; there is no spare service capacity. |
+| RDS PostgreSQL | `db.t4g.micro`, 20 GiB gp3, Single-AZ | Keeps compute and storage small; there is no synchronous standby or automatic Multi-AZ failover. |
+| ALB and WAF | One of each, two standard AWS managed groups | Intentional recurring portfolio costs that demonstrate TLS ingress and managed web filtering. |
+| CloudWatch | 30-day application logs plus Container Insights | Finite retention, but log ingestion/storage and Container Insights metrics remain chargeable. |
+| Encryption | AWS-managed service keys | Avoids recurring customer-managed KMS key charges while retaining encryption at rest. |
+
+No interface endpoints, bastions, EC2 instances, autoscaling policies, alarms,
+dashboards, flow logs, custom KMS keys, or duplicate ECR repositories are created.
+
+### Deliberate AWS teardown
+
+If this reference is ever deployed, teardown is intentionally a two-step act.
+First set the ALB and RDS `deletion_protection` arguments to `false` and remove
+the RDS `prevent_destroy` lifecycle rule in a reviewed change. Then destroy the
+root. Check for and deliberately remove the final RDS snapshot and RDS-managed
+Secrets Manager secret when they are no longer needed; retained snapshots and
+secrets can continue to incur storage or service charges. Finally confirm that
+the NAT Elastic IP, NAT Gateway, ALB, WAF web ACL, log groups, and queues are gone.
+
+## Local environment
 
 The local environment runs Postgres and LocalStack from the root
 `docker-compose.yml`. Terraform in `infra/envs/local` creates:

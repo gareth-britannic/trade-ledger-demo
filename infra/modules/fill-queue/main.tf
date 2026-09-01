@@ -2,6 +2,7 @@ resource "aws_sqs_queue" "dead_letter" {
   name                        = "${var.name}-dlq.fifo"
   fifo_queue                  = true
   content_based_deduplication = false
+  sqs_managed_sse_enabled     = true
   message_retention_seconds   = var.dlq_message_retention_seconds
 
   tags = var.tags
@@ -11,6 +12,7 @@ resource "aws_sqs_queue" "fills" {
   name                        = "${var.name}.fifo"
   fifo_queue                  = true
   content_based_deduplication = false
+  sqs_managed_sse_enabled     = true
   visibility_timeout_seconds  = var.visibility_timeout_seconds
   message_retention_seconds   = var.message_retention_seconds
 
