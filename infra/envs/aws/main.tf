@@ -58,5 +58,7 @@ module "api_service" {
   fill_queue_url      = module.fill_queue.queue_url
   database_host       = module.database.address
   database_secret_arn = module.database.master_user_secret_arn
+  cognito_authority   = var.cognito_authority
+  cognito_audience    = var.cognito_audience
   tags                = local.tags
 }

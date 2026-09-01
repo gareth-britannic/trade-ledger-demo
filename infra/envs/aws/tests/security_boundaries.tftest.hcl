@@ -41,8 +41,10 @@ run "allows_only_internet_to_alb_to_ecs_to_database" {
   command = plan
 
   variables {
-    container_image = "public.example/trade-ledger@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-    certificate_arn = "arn:aws:acm:eu-west-2:123456789012:certificate/test"
+    container_image   = "public.example/trade-ledger@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    certificate_arn   = "arn:aws:acm:eu-west-2:123456789012:certificate/test"
+    cognito_authority = "https://cognito-idp.eu-west-2.amazonaws.com/eu-west-2_example"
+    cognito_audience  = "example-client"
   }
 
   assert {

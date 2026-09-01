@@ -50,7 +50,7 @@ variable "target_group_arn" {
 }
 
 variable "fill_queue_arn" {
-  description = "ARN of the FIFO queue the API may publish fills to."
+  description = "ARN of the FIFO queue the API uses to publish and process fills."
   type        = string
 }
 
@@ -67,6 +67,26 @@ variable "database_host" {
 variable "database_secret_arn" {
   description = "ARN of the Secrets Manager secret containing RDS credentials."
   type        = string
+}
+
+variable "cognito_authority" {
+  description = "HTTPS Cognito user-pool authority used for JWT validation."
+  type        = string
+
+  validation {
+    condition     = can(regex("^https://", var.cognito_authority))
+    error_message = "cognito_authority must be an HTTPS URI."
+  }
+}
+
+variable "cognito_audience" {
+  description = "Cognito app-client audience used for JWT validation."
+  type        = string
+
+  validation {
+    condition     = length(trimspace(var.cognito_audience)) > 0
+    error_message = "cognito_audience must not be empty."
+  }
 }
 
 variable "desired_count" {

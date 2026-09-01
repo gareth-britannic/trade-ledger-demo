@@ -76,15 +76,19 @@ resource "aws_iam_role" "task" {
 }
 
 resource "aws_iam_role_policy" "publish_fills" {
-  name = "publish-fills"
+  name = "access-fill-queue"
   role = aws_iam_role.task.id
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid      = "PublishFills"
-      Effect   = "Allow"
-      Action   = ["sqs:SendMessage"]
+      Sid    = "AccessFillQueue"
+      Effect = "Allow"
+      Action = [
+        "sqs:DeleteMessage",
+        "sqs:ReceiveMessage",
+        "sqs:SendMessage"
+      ]
       Resource = var.fill_queue_arn
     }]
   })
@@ -98,6 +102,11 @@ resource "aws_ecs_task_definition" "this" {
   memory                   = 512
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.task.arn
+
+  runtime_platform {
+    cpu_architecture        = "ARM64"
+    operating_system_family = "LINUX"
+  }
 
   container_definitions = jsonencode([{
     name      = "api"
@@ -113,7 +122,9 @@ resource "aws_ecs_task_definition" "this" {
     environment = [
       { name = "AWS_REGION", value = var.aws_region },
       { name = "FillQueue__Url", value = var.fill_queue_url },
-      { name = "Database__Host", value = var.database_host }
+      { name = "Database__Host", value = var.database_host },
+      { name = "Authentication__Cognito__Authority", value = var.cognito_authority },
+      { name = "Authentication__Cognito__Audience", value = var.cognito_audience }
     ]
 
     secrets = [
@@ -166,6 +177,7 @@ resource "aws_ecs_service" "this" {
 
   depends_on = [
     aws_iam_role_policy.execute_task,
+    aws_iam_role_policy.publish_fills,
     aws_iam_role_policy.read_database_secret
   ]
 }

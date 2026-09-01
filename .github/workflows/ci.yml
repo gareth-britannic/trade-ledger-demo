@@ -1,0 +1,135 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and test .NET
+    runs-on: ubuntu-latest
+    env:
+      MIN_LINE_COVERAGE: "90"
+      MIN_BRANCH_COVERAGE: "90"
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.400"
+      - name: Restore
+        run: dotnet restore TradeLedger.sln
+      - name: Build
+        run: dotnet build TradeLedger.sln --configuration Release --no-restore
+      - name: Test with coverage
+        run: >-
+          dotnet test TradeLedger.sln
+          --configuration Release
+          --no-build
+          --collect:"Code Coverage"
+          --settings coverage.runsettings
+          --results-directory TestResults
+      - name: Enforce coverage thresholds
+        shell: bash
+        run: |
+          coverage_file="$(find TestResults -name '*.cobertura.xml' -print -quit)"
+          if [[ -z "$coverage_file" ]]; then
+            echo "Coverage report was not generated."
+            exit 1
+          fi
+
+          coverage_header="$(sed -n '/<coverage /{p;q;}' "$coverage_file")"
+          if [[ "$coverage_header" =~ line-rate=\"([0-9.]+)\" ]]; then
+            line_rate="${BASH_REMATCH[1]}"
+          else
+            echo "Line coverage was not present in $coverage_file."
+            exit 1
+          fi
+          if [[ "$coverage_header" =~ branch-rate=\"([0-9.]+)\" ]]; then
+            branch_rate="${BASH_REMATCH[1]}"
+          else
+            echo "Branch coverage was not present in $coverage_file."
+            exit 1
+          fi
+
+          awk -v rate="$line_rate" -v minimum="$MIN_LINE_COVERAGE" 'BEGIN {
+            actual = rate * 100
+            printf "Line coverage: %.2f%% (minimum %.2f%%)\n", actual, minimum
+            exit actual < minimum
+          }'
+          awk -v rate="$branch_rate" -v minimum="$MIN_BRANCH_COVERAGE" 'BEGIN {
+            actual = rate * 100
+            printf "Branch coverage: %.2f%% (minimum %.2f%%)\n", actual, minimum
+            exit actual < minimum
+          }'
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: code-coverage
+          path: TestResults/**/*.cobertura.xml
+          if-no-files-found: error
+
+  lint:
+    name: Lint and validate Terraform
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ""
+      AWS_SECRET_ACCESS_KEY: ""
+      AWS_SESSION_TOKEN: ""
+      AWS_EC2_METADATA_DISABLED: "true"
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.13.5
+      - name: Check Terraform formatting
+        run: terraform fmt -check -recursive infra
+      - name: Initialize local environment without a backend
+        run: terraform -chdir=infra/envs/local init -backend=false -input=false -lockfile=readonly
+      - name: Validate local environment
+        run: terraform -chdir=infra/envs/local validate
+      - name: Initialize AWS environment without a backend
+        run: terraform -chdir=infra/envs/aws init -backend=false -input=false -lockfile=readonly
+      - name: Validate AWS environment
+        run: terraform -chdir=infra/envs/aws validate
+
+  terraform-tests:
+    name: Terraform test ${{ matrix.directory }}
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ""
+      AWS_SECRET_ACCESS_KEY: ""
+      AWS_SESSION_TOKEN: ""
+      AWS_EC2_METADATA_DISABLED: "true"
+    strategy:
+      fail-fast: false
+      matrix:
+        directory:
+          - infra/modules/network
+          - infra/modules/fill-queue
+          - infra/modules/database
+          - infra/modules/public-api-edge
+          - infra/modules/api-service
+          - infra/envs/aws
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.13.5
+      - name: Initialize without a backend
+        run: terraform -chdir=${{ matrix.directory }} init -backend=false -input=false -lockfile=readonly
+      - name: Validate configuration
+        run: terraform -chdir=${{ matrix.directory }} validate
+      - name: Run mocked-provider tests
+        run: terraform -chdir=${{ matrix.directory }} test

@@ -40,6 +40,8 @@ run "keeps_fargate_private_and_iam_least_privilege" {
     fill_queue_url      = "https://sqs.eu-west-2.amazonaws.com/123456789012/trade-ledger-fills.fifo"
     database_host       = "trade-ledger.cluster.example.internal"
     database_secret_arn = "arn:aws:secretsmanager:eu-west-2:123456789012:secret:trade-ledger"
+    cognito_authority   = "https://cognito-idp.eu-west-2.amazonaws.com/eu-west-2_example"
+    cognito_audience    = "example-client"
   }
 
   assert {
@@ -52,10 +54,12 @@ run "keeps_fargate_private_and_iam_least_privilege" {
       aws_ecs_task_definition.this.requires_compatibilities == toset(["FARGATE"]) &&
       aws_ecs_task_definition.this.cpu == "256" &&
       aws_ecs_task_definition.this.memory == "512" &&
+      one(aws_ecs_task_definition.this.runtime_platform).cpu_architecture == "ARM64" &&
+      one(aws_ecs_task_definition.this.runtime_platform).operating_system_family == "LINUX" &&
       aws_ecs_service.this.desired_count == 1 &&
       !aws_ecs_service.this.enable_execute_command
     )
-    error_message = "The reference service must use one minimum-sized Fargate task with ECS Exec disabled."
+    error_message = "The reference service must use one minimum-sized ARM64 Linux Fargate task with ECS Exec disabled."
   }
 
   assert {
@@ -81,10 +85,14 @@ run "keeps_fargate_private_and_iam_least_privilege" {
 
   assert {
     condition = (
-      toset(jsondecode(aws_iam_role_policy.publish_fills.policy).Statement[0].Action) == toset(["sqs:SendMessage"]) &&
+      toset(jsondecode(aws_iam_role_policy.publish_fills.policy).Statement[0].Action) == toset([
+        "sqs:DeleteMessage",
+        "sqs:ReceiveMessage",
+        "sqs:SendMessage"
+      ]) &&
       jsondecode(aws_iam_role_policy.publish_fills.policy).Statement[0].Resource == "arn:aws:sqs:eu-west-2:123456789012:trade-ledger-fills.fifo"
     )
-    error_message = "The task role must only allow SendMessage on the supplied fill queue."
+    error_message = "The task role must only publish, receive, and delete messages on the supplied fill queue."
   }
 
   assert {
@@ -142,6 +150,8 @@ run "rejects_invalid_service_inputs" {
     fill_queue_url      = "https://sqs.eu-west-2.amazonaws.com/123456789012/trade-ledger-fills.fifo"
     database_host       = "trade-ledger.internal"
     database_secret_arn = "arn:aws:secretsmanager:eu-west-2:123456789012:secret:trade-ledger"
+    cognito_authority   = "https://cognito-idp.eu-west-2.amazonaws.com/eu-west-2_example"
+    cognito_audience    = "example-client"
   }
 
   expect_failures = [var.container_image, var.container_port, var.subnet_ids]

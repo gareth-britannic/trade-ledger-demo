@@ -34,3 +34,24 @@ variable "certificate_arn" {
     error_message = "certificate_arn must be an ACM certificate ARN."
   }
 }
+
+variable "cognito_authority" {
+  description = "HTTPS Cognito user-pool authority used by the API."
+  type        = string
+
+  validation {
+    condition     = can(regex("^https://", var.cognito_authority))
+    error_message = "cognito_authority must be an HTTPS URI."
+  }
+}
+
+variable "cognito_audience" {
+  description = "Cognito app-client audience used by the API."
+  type        = string
+  sensitive   = true
+
+  validation {
+    condition     = length(trimspace(var.cognito_audience)) > 0
+    error_message = "cognito_audience must not be empty."
+  }
+}

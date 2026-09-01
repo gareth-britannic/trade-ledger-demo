@@ -1,0 +1,13 @@
+.git
+.github
+.idea
+.terraform
+**/bin
+**/obj
+TestResults
+tests
+infra
+*.tfstate
+*.tfstate.*
+*.tfplan
+.DS_Store
