@@ -134,3 +134,45 @@ jobs:
         run: terraform -chdir=${{ matrix.directory }} validate
       - name: Run mocked-provider tests
         run: terraform -chdir=${{ matrix.directory }} test
+
+  integrate:
+    name: FIFO ordering and idempotency integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: eu-west-2
+      AWS_REGION: eu-west-2
+      AWS_EC2_METADATA_DISABLED: "true"
+      TRADE_LEDGER_RUN_LOCALSTACK_INTEGRATION: "1"
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.400"
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.13.5
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+      - name: Restore .NET dependencies and tools
+        run: |
+          dotnet restore TradeLedger.sln
+          dotnet tool restore
+      - name: Start Postgres and LocalStack and deploy the processor
+        run: ./deploy/scripts/bootstrap-all.sh
+      - name: Run FIFO ordering and idempotency integration test
+        run: >-
+          dotnet test tests/TradeLedger.IntegrationTests/TradeLedger.IntegrationTests.csproj
+          --configuration Release
+          --no-restore
+          --filter "Category=External"
+      - name: Capture local service logs
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Stop local services
+        if: always()
+        run: docker compose down --volumes

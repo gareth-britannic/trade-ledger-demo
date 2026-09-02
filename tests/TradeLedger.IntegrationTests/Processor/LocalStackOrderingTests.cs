@@ -21,22 +21,16 @@ namespace TradeLedger.IntegrationTests.Processor;
 
 public sealed class LocalStackOrderingTests
 {
-    private const string RunEnvironmentVariable = "TRADE_LEDGER_RUN_LOCALSTACK_INTEGRATION";
     private const string LocalStackEndpoint = "http://localhost:4566";
     private const string QueueName = "trade-ledger-fills.fifo";
     private const string ConnectionString =
         "Host=localhost;Port=55432;Database=trade_ledger;Username=trade_ledger;Password=trade_ledger";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    [Fact]
+    [LocalStackFact]
+    [Trait("Category", "External")]
     public async Task EventSourceMapping_ReplaysOutOfArrivalOrderAndRedeliveryIsIdempotent()
     {
-        if (!string.Equals(Environment.GetEnvironmentVariable(RunEnvironmentVariable), "1",
-                StringComparison.Ordinal))
-        {
-            return;
-        }
-
         using var sqs = CreateSqsClient();
         var queueUrl = (await sqs.GetQueueUrlAsync(QueueName)).QueueUrl;
         await using var services = CreateServices(queueUrl);
@@ -245,4 +239,18 @@ public sealed class LocalStackOrderingTests
         IReadOnlyList<PersistedLot> Lots,
         decimal? OpenQuantity,
         decimal? RealisedPnl);
+}
+
+public sealed class LocalStackFactAttribute : FactAttribute
+{
+    public LocalStackFactAttribute()
+    {
+        if (!string.Equals(
+                Environment.GetEnvironmentVariable("TRADE_LEDGER_RUN_LOCALSTACK_INTEGRATION"),
+                "1",
+                StringComparison.Ordinal))
+        {
+            Skip = "Run deploy/scripts/bootstrap-all.sh and set TRADE_LEDGER_RUN_LOCALSTACK_INTEGRATION=1.";
+        }
+    }
 }
