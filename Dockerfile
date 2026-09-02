@@ -1,12 +1,13 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /source
 
-COPY src/TradeLedger.Common/TradeLedger.Common.csproj src/TradeLedger.Common/
-COPY src/TradeLedger.Domain/TradeLedger.Domain.csproj src/TradeLedger.Domain/
-COPY src/TradeLedger.Application/TradeLedger.Application.csproj src/TradeLedger.Application/
-COPY src/TradeLedger.Database/TradeLedger.Database.csproj src/TradeLedger.Database/
-COPY src/TradeLedger.Api/TradeLedger.Api.csproj src/TradeLedger.Api/
-RUN dotnet restore src/TradeLedger.Api/TradeLedger.Api.csproj
+COPY Directory.Build.props .
+COPY src/TradeLedger.Common/TradeLedger.Common.csproj src/TradeLedger.Common/packages.lock.json src/TradeLedger.Common/
+COPY src/TradeLedger.Domain/TradeLedger.Domain.csproj src/TradeLedger.Domain/packages.lock.json src/TradeLedger.Domain/
+COPY src/TradeLedger.Application/TradeLedger.Application.csproj src/TradeLedger.Application/packages.lock.json src/TradeLedger.Application/
+COPY src/TradeLedger.Database/TradeLedger.Database.csproj src/TradeLedger.Database/packages.lock.json src/TradeLedger.Database/
+COPY src/TradeLedger.Api/TradeLedger.Api.csproj src/TradeLedger.Api/packages.lock.json src/TradeLedger.Api/
+RUN dotnet restore src/TradeLedger.Api/TradeLedger.Api.csproj --locked-mode
 
 COPY src/ src/
 RUN dotnet publish src/TradeLedger.Api/TradeLedger.Api.csproj \

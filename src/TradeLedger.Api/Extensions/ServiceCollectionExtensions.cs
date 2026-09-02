@@ -112,14 +112,21 @@ public static class ServiceCollectionExtensions
         {
             OnTokenValidated = context =>
             {
-                var tokenUse = context.Principal?.FindFirst("token_use")?.Value;
+                var principal = context.Principal;
+                if (principal is null)
+                {
+                    context.Fail("Missing authenticated principal.");
+                    return Task.CompletedTask;
+                }
+
+                var tokenUse = principal.FindFirst("token_use")?.Value;
                 if (!string.Equals(tokenUse, "access", StringComparison.Ordinal))
                 {
                     context.Fail("Invalid token_use. Expected an access token.");
                     return Task.CompletedTask;
                 }
 
-                var clientId = context.Principal?.FindFirst("client_id")?.Value;
+                var clientId = principal.FindFirst("client_id")?.Value;
                 if (!string.Equals(clientId, cognito.Value.Audience, StringComparison.Ordinal))
                 {
                     context.Fail("Invalid client_id for the configured Cognito app client.");

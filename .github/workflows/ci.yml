@@ -21,12 +21,12 @@ jobs:
       MIN_BRANCH_COVERAGE: "90"
 
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           dotnet-version: "10.0.400"
       - name: Restore
-        run: dotnet restore TradeLedger.sln
+        run: dotnet restore TradeLedger.sln --locked-mode
       - name: Restore local tools
         run: dotnet tool restore
       - name: Build
@@ -80,7 +80,7 @@ jobs:
           }'
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: code-coverage
           path: |
@@ -98,8 +98,12 @@ jobs:
       AWS_EC2_METADATA_DISABLED: "true"
 
     steps:
-      - uses: actions/checkout@v7
-      - uses: hashicorp/setup-terraform@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Validate local service bindings
+        run: >-
+          docker compose config --format json |
+          jq -e '[.services[].ports[]? | .host_ip] | (length > 0 and all(. == "127.0.0.1"))'
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
         with:
           terraform_version: 1.13.5
       - name: Check Terraform formatting
@@ -134,8 +138,8 @@ jobs:
           - infra/envs/aws
 
     steps:
-      - uses: actions/checkout@v7
-      - uses: hashicorp/setup-terraform@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
         with:
           terraform_version: 1.13.5
       - name: Initialize without a backend
@@ -158,16 +162,16 @@ jobs:
       TRADE_LEDGER_RUN_LOCALSTACK_INTEGRATION: "1"
 
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           dotnet-version: "10.0.400"
-      - uses: hashicorp/setup-terraform@v4
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
         with:
           terraform_version: 1.13.5
       - name: Restore .NET dependencies and tools
         run: |
-          dotnet restore TradeLedger.sln
+          dotnet restore TradeLedger.sln --locked-mode
           dotnet tool restore
       - name: Start Postgres and LocalStack and deploy the processor
         run: ./deploy/scripts/bootstrap-all.sh

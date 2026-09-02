@@ -85,14 +85,10 @@ run "keeps_fargate_private_and_iam_least_privilege" {
 
   assert {
     condition = (
-      toset(jsondecode(aws_iam_role_policy.publish_fills.policy).Statement[0].Action) == toset([
-        "sqs:DeleteMessage",
-        "sqs:ReceiveMessage",
-        "sqs:SendMessage"
-      ]) &&
+      toset(jsondecode(aws_iam_role_policy.publish_fills.policy).Statement[0].Action) == toset(["sqs:SendMessage"]) &&
       jsondecode(aws_iam_role_policy.publish_fills.policy).Statement[0].Resource == "arn:aws:sqs:eu-west-2:123456789012:trade-ledger-fills.fifo"
     )
-    error_message = "The task role must only publish, receive, and delete messages on the supplied fill queue."
+    error_message = "The task role must only publish messages to the supplied fill queue."
   }
 
   assert {

@@ -82,13 +82,9 @@ resource "aws_iam_role_policy" "publish_fills" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid    = "AccessFillQueue"
-      Effect = "Allow"
-      Action = [
-        "sqs:DeleteMessage",
-        "sqs:ReceiveMessage",
-        "sqs:SendMessage"
-      ]
+      Sid      = "AccessFillQueue"
+      Effect   = "Allow"
+      Action   = ["sqs:SendMessage"]
       Resource = var.fill_queue_arn
     }]
   })

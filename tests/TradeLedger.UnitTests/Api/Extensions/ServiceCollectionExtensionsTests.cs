@@ -58,11 +58,15 @@ public sealed class ServiceCollectionExtensionsTests
     }
 
     [Theory]
-    [InlineData("id", "trade-ledger")]
-    [InlineData("access", "another-client")]
-    public async Task AddApiServices_NonAccessOrWrongClientToken_IsRejected(
-        string tokenUse,
-        string clientId)
+    [InlineData(false, null, null)]
+    [InlineData(true, null, "trade-ledger")]
+    [InlineData(true, "id", "trade-ledger")]
+    [InlineData(true, "access", null)]
+    [InlineData(true, "access", "another-client")]
+    public async Task AddApiServices_MissingOrInvalidAccessTokenClaims_AreRejected(
+        bool hasPrincipal,
+        string? tokenUse,
+        string? clientId)
     {
         var services = new ServiceCollection();
         services.AddSingleton<IHostEnvironment>(Environment(Environments.Development));
@@ -70,11 +74,17 @@ public sealed class ServiceCollectionExtensionsTests
         using var provider = services.BuildServiceProvider();
         var options = provider.GetRequiredService<IOptionsMonitor<JwtBearerOptions>>()
             .Get(JwtBearerDefaults.AuthenticationScheme);
-        var principal = new ClaimsPrincipal(new ClaimsIdentity([
-            new Claim("sub", "local-user"),
-            new Claim("token_use", tokenUse),
-            new Claim("client_id", clientId)
-        ], JwtBearerDefaults.AuthenticationScheme));
+        var claims = new List<Claim> { new("sub", "local-user") };
+        if (tokenUse is not null)
+        {
+            claims.Add(new Claim("token_use", tokenUse));
+        }
+
+        if (clientId is not null)
+        {
+            claims.Add(new Claim("client_id", clientId));
+        }
+
         var context = new TokenValidatedContext(
             new DefaultHttpContext { RequestServices = provider },
             new AuthenticationScheme(
@@ -83,7 +93,11 @@ public sealed class ServiceCollectionExtensionsTests
                 typeof(JwtBearerHandler)),
             options)
         {
-            Principal = principal
+            Principal = hasPrincipal
+                ? new ClaimsPrincipal(new ClaimsIdentity(
+                    claims,
+                    JwtBearerDefaults.AuthenticationScheme))
+                : null
         };
 
         await options.Events.OnTokenValidated(context);
@@ -125,6 +139,7 @@ public sealed class ServiceCollectionExtensionsTests
     [Theory]
     [InlineData("not-a-uri", "trade-ledger")]
     [InlineData("http://cognito.example.test/pool", "trade-ledger")]
+    [InlineData("ftp://localhost/pool", "trade-ledger")]
     [InlineData("https://cognito.example.test/pool", "")]
     public void AddApiServices_InvalidCognitoConfiguration_FailsOptionsValidation(
         string authority,
