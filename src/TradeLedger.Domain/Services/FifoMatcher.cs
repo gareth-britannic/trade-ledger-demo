@@ -104,19 +104,5 @@ public static class FifoMatcher
             throw new ArgumentException($"Expected a {expectedSide} fill.", nameof(fill));
         }
 
-        if (string.IsNullOrWhiteSpace(fill.Symbol))
-        {
-            throw new ArgumentException("A fill must have a symbol.", nameof(fill));
-        }
-
-        if (fill.Quantity <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(fill), "A fill quantity must be positive.");
-        }
-
-        if (fill.Price < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(fill), "A fill price cannot be negative.");
-        }
     }
 }

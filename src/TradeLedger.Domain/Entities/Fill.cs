@@ -1,13 +1,35 @@
 namespace TradeLedger.Domain;
 
-public sealed record Fill(
-    Guid Id,
-    string Symbol,
-    Side Side,
-    decimal Quantity,
-    decimal Price,
-    DateTimeOffset ExecutedAt)
+public sealed record Fill
 {
+    private Fill(
+        Guid id,
+        string symbol,
+        Side side,
+        decimal quantity,
+        decimal price,
+        DateTimeOffset executedAt)
+    {
+        Id = id;
+        Symbol = symbol;
+        Side = side;
+        Quantity = quantity;
+        Price = price;
+        ExecutedAt = executedAt;
+    }
+
+    public Guid Id { get; }
+
+    public string Symbol { get; }
+
+    public Side Side { get; }
+
+    public decimal Quantity { get; }
+
+    public decimal Price { get; }
+
+    public DateTimeOffset ExecutedAt { get; }
+
     public static Fill Create(
         Guid id,
         string symbol,

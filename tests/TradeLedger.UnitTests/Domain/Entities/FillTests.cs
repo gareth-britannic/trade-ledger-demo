@@ -73,4 +73,15 @@ public sealed class FillTests
 
         exception.ParamName.ShouldBe("executedAt");
     }
+
+    [Fact]
+    public void PendingRequest_ToFill_RevalidatesPersistedData()
+    {
+        var request = new PendingFillRequest(
+            Guid.NewGuid(), "ACME", Side.Buy, 10m, 0m, ExecutedAt);
+
+        var exception = Should.Throw<ArgumentOutOfRangeException>(request.ToFill);
+
+        exception.ParamName.ShouldBe("price");
+    }
 }

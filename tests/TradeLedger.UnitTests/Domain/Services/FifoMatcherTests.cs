@@ -69,50 +69,6 @@ public class FifoMatcherTests
         Should.Throw<ArgumentException>(action).ParamName.ShouldBe("fill");
     }
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
-    public void ApplyBuy_WhenSymbolIsMissing_Throws(string? symbol)
-    {
-        // Arrange
-        var buy = Buy(100m, 10m, Start) with { Symbol = symbol! };
-
-        // Act
-        var action = () => FifoMatcher.ApplyBuy([], buy);
-
-        // Assert
-        Should.Throw<ArgumentException>(action).ParamName.ShouldBe("fill");
-    }
-
-    [Theory]
-    [InlineData(0)]
-    [InlineData(-1)]
-    public void ApplyBuy_WhenQuantityIsNotPositive_Throws(decimal quantity)
-    {
-        // Arrange
-        var buy = Buy(quantity, 10m, Start);
-
-        // Act
-        var action = () => FifoMatcher.ApplyBuy([], buy);
-
-        // Assert
-        Should.Throw<ArgumentOutOfRangeException>(action).ParamName.ShouldBe("fill");
-    }
-
-    [Fact]
-    public void ApplyBuy_WhenPriceIsNegative_Throws()
-    {
-        // Arrange
-        var buy = Buy(100m, -0.01m, Start);
-
-        // Act
-        var action = () => FifoMatcher.ApplyBuy([], buy);
-
-        // Assert
-        Should.Throw<ArgumentOutOfRangeException>(action).ParamName.ShouldBe("fill");
-    }
-
     [Fact]
     public void ApplyBuy_WhenAnOpenLotHasAnotherSymbol_Throws()
     {
@@ -220,53 +176,6 @@ public class FifoMatcherTests
         Should.Throw<ArgumentException>(action).ParamName.ShouldBe("fill");
     }
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
-    public void ApplySell_WhenSymbolIsMissing_Throws(string? symbol)
-    {
-        // Arrange
-        IReadOnlyList<Lot> openLots = [Lot(100m, 10m)];
-        var sell = Sell(100m, 15m, Start.AddMinutes(1)) with { Symbol = symbol! };
-
-        // Act
-        var action = () => FifoMatcher.ApplySell(openLots, sell);
-
-        // Assert
-        Should.Throw<ArgumentException>(action).ParamName.ShouldBe("fill");
-    }
-
-    [Theory]
-    [InlineData(0)]
-    [InlineData(-1)]
-    public void ApplySell_WhenQuantityIsNotPositive_Throws(decimal quantity)
-    {
-        // Arrange
-        IReadOnlyList<Lot> openLots = [Lot(100m, 10m)];
-        var sell = Sell(quantity, 15m, Start.AddMinutes(1));
-
-        // Act
-        var action = () => FifoMatcher.ApplySell(openLots, sell);
-
-        // Assert
-        Should.Throw<ArgumentOutOfRangeException>(action).ParamName.ShouldBe("fill");
-    }
-
-    [Fact]
-    public void ApplySell_WhenPriceIsNegative_Throws()
-    {
-        // Arrange
-        IReadOnlyList<Lot> openLots = [Lot(100m, 10m)];
-        var sell = Sell(100m, -0.01m, Start.AddMinutes(1));
-
-        // Act
-        var action = () => FifoMatcher.ApplySell(openLots, sell);
-
-        // Assert
-        Should.Throw<ArgumentOutOfRangeException>(action).ParamName.ShouldBe("fill");
-    }
-
     [Fact]
     public void ApplySell_WhenAnOpenLotHasAnotherSymbol_Throws()
     {
@@ -312,10 +221,10 @@ public class FifoMatcherTests
     }
 
     private static Fill Buy(decimal quantity, decimal price, DateTimeOffset executedAt) =>
-        new(Guid.NewGuid(), Symbol, Side.Buy, quantity, price, executedAt);
+        Fill.Create(Guid.NewGuid(), Symbol, Side.Buy, quantity, price, executedAt);
 
     private static Fill Sell(decimal quantity, decimal price, DateTimeOffset executedAt) =>
-        new(Guid.NewGuid(), Symbol, Side.Sell, quantity, price, executedAt);
+        Fill.Create(Guid.NewGuid(), Symbol, Side.Sell, quantity, price, executedAt);
 
     private static Lot Lot(decimal quantity, decimal unitCost, DateTimeOffset? openedAt = null) =>
         new(Guid.NewGuid(), Symbol, quantity, unitCost, openedAt ?? Start);

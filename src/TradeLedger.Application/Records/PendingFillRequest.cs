@@ -31,5 +31,5 @@ public sealed record PendingFillRequest(
     }
 
     /// <summary>Creates the domain fill only when the asynchronous request is being applied.</summary>
-    public Fill ToFill() => new(Id, Symbol, Side, Quantity, Price, ExecutedAt);
+    public Fill ToFill() => Fill.Create(Id, Symbol, Side, Quantity, Price, ExecutedAt);
 }
