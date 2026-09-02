@@ -1,5 +1,7 @@
 using TradeLedger.Application;
 
+using TradeLedger.Domain;
+
 namespace TradeLedger.Api.Contracts.Fills;
 
 public sealed record CreateFillRequest(

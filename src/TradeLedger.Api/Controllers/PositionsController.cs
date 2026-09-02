@@ -27,7 +27,7 @@ public sealed class PositionsController(IPositionQueryService positionQueryServi
     public async Task<ActionResult<IReadOnlyList<PositionResponse>>> Get(CancellationToken cancellationToken)
     {
         var results = await positionQueryService.GetPositionsAsync(cancellationToken);
-        return Ok(results.Select(PositionResponse.FromApplication).ToArray());
+        return Ok(results.Select(PositionResponse.FromApplication).ToList());
     }
 
     /// <summary>Gets the FIFO-ordered open lots for a position.</summary>
@@ -49,6 +49,6 @@ public sealed class PositionsController(IPositionQueryService positionQueryServi
         CancellationToken cancellationToken)
     {
         var results = await positionQueryService.GetOpenLotsAsync(symbol, cancellationToken);
-        return Ok(results.Select(LotResponse.FromApplication).ToArray());
+        return Ok(results.Select(LotResponse.FromApplication).ToList());
     }
 }

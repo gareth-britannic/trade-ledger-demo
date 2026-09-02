@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using TradeLedger.Api.Constants;
-using TradeLedger.Application.Interfaces;
+using TradeLedger.Common;
 
 namespace TradeLedger.Api.Factories;
 

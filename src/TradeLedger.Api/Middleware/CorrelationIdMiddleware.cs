@@ -1,14 +1,13 @@
 using Microsoft.Extensions.Primitives;
 using Serilog.Context;
-using TradeLedger.Application.Interfaces;
-using TradeLedger.Application.Services;
+using TradeLedger.Common;
 
 namespace TradeLedger.Api.Middleware;
 
 public sealed class CorrelationIdMiddleware(RequestDelegate next)
 {
     public const string HeaderName = "X-Correlation-Id";
-    public const int MaximumLength = 128;
+    public const int MaximumLength = CorrelationIdFactory.MaximumLength;
 
     public async Task InvokeAsync(HttpContext context, ICorrelationIdProvider correlationIdProvider)
     {
@@ -38,15 +37,9 @@ public sealed class CorrelationIdMiddleware(RequestDelegate next)
     {
         if (values.Count == 1)
         {
-            var candidate = values[0]?.Trim();
-            if (!string.IsNullOrEmpty(candidate) &&
-                candidate.Length <= MaximumLength &&
-                candidate.All(character => !char.IsControl(character)))
-            {
-                return candidate;
-            }
+            return CorrelationIdFactory.NormalizeOrCreate(values[0]);
         }
 
-        return Guid.NewGuid().ToString("N");
+        return CorrelationIdFactory.NormalizeOrCreate(null);
     }
 }

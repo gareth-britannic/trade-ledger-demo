@@ -5,6 +5,7 @@ using TradeLedger.Application.Exceptions;
 using TradeLedger.Application.Interfaces;
 using TradeLedger.Application.Records;
 using TradeLedger.Application.Services;
+using TradeLedger.Domain;
 using Xunit;
 
 namespace TradeLedger.UnitTests.Application.Services;

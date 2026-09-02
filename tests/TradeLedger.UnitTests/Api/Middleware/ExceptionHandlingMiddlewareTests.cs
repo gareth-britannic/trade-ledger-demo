@@ -11,6 +11,7 @@ using Shouldly;
 using TradeLedger.Api.Middleware;
 using TradeLedger.Application.Exceptions;
 using TradeLedger.Application.Services;
+using TradeLedger.Common;
 using Xunit;
 
 namespace TradeLedger.UnitTests.Api.Middleware;

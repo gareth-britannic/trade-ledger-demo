@@ -1,9 +1,9 @@
 # Trade Ledger API
 
-The API uses a controller → application service → repository/publisher flow. Controllers bind HTTP
-contracts, call one service method, and map application results to explicit response contracts.
-Application owns the models, business rules, interfaces, and use cases; EF Core and AWS types are
-confined to Infrastructure.
+The write path is deliberately small: the API persists a pending fill request and sends a typed
+`FillRequestMessage` through the generic `ISqsClient`. The SQS-triggered Lambda is the only host
+that applies the request to the ledger. Database code lives in `TradeLedger.Database`; shared
+logging, correlation, and SQS code lives in `TradeLedger.Common`.
 
 ## Configuration
 
@@ -15,7 +15,6 @@ Set configuration with the standard .NET double-underscore environment-variable 
 | `Database__Host`, `Database__Name` | PostgreSQL endpoint and database when not using a complete connection string |
 | `Database__Username`, `Database__Password` | PostgreSQL credentials when not using a complete connection string |
 | `FillQueue__Url` | Full FIFO queue URL (required) |
-| `FillProcessing__Enabled` | Enables SQS polling and asynchronous FIFO processing (defaults to `true`) |
 | `Authentication__Cognito__Authority` | HTTPS Cognito user-pool authority (required) |
 | `Authentication__Cognito__Audience` | Cognito app-client audience (required) |
 | `AWS_REGION` or `AWS_DEFAULT_REGION` | AWS SDK region resolution outside Development |
@@ -34,7 +33,7 @@ dotnet tool restore
 export FillQueue__Url="$(terraform -chdir=infra/envs/local output -raw fill_queue_url)"
 export Authentication__Cognito__Authority="https://cognito-idp.REGION.amazonaws.com/USER_POOL_ID"
 export Authentication__Cognito__Audience="COGNITO_APP_CLIENT_ID"
-ASPNETCORE_ENVIRONMENT=Development dotnet ef database update --project src/TradeLedger.Infrastructure --startup-project src/TradeLedger.Api
+ASPNETCORE_ENVIRONMENT=Development dotnet ef database update --project src/TradeLedger.Database --startup-project src/TradeLedger.Api
 dotnet run --project src/TradeLedger.Api
 ```
 
@@ -49,8 +48,8 @@ realised P&L entry for each processed sell, and marks the fill with `processed_a
 the P&L entry is the fill's UTC execution time, so period queries such as "this month" are accurate.
 `processed_at` makes repeated SQS delivery idempotent.
 
-The processing service lives in Application. `SqsFillProcessor` is only its current host, so the same
-use case can move to Lambda later without moving FIFO behaviour into AWS-specific code.
+The processing workflow lives in Application behind `IFillRequestProcessor`, so a queue-triggered
+host can invoke the same use case without moving FIFO or persistence logic into its adapter.
 
 Fill acceptance deliberately persists before publishing. This required sequence is not atomic: a
 queue failure can leave a persisted fill unpublished. Unique fill IDs and FIFO deduplication make

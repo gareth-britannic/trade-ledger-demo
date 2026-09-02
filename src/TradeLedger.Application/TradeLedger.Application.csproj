@@ -11,4 +11,9 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.1" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="../TradeLedger.Common/TradeLedger.Common.csproj" />
+    <ProjectReference Include="../TradeLedger.Domain/TradeLedger.Domain.csproj" />
+  </ItemGroup>
+
 </Project>

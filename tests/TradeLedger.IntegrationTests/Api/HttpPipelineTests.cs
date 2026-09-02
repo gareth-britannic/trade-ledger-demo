@@ -11,8 +11,9 @@ using TradeLedger.Api.Contracts.Positions;
 using TradeLedger.Api.Middleware;
 using TradeLedger.Application;
 using TradeLedger.Application.Interfaces;
-using TradeLedger.Infrastructure.Database;
-using TradeLedger.Infrastructure.Database.Entities;
+using TradeLedger.Database;
+using TradeLedger.Database.Entities;
+using TradeLedger.Domain;
 using Xunit;
 
 namespace TradeLedger.IntegrationTests.Api;
@@ -77,8 +78,8 @@ public sealed class HttpPipelineTests : IClassFixture<TradeLedgerApiFactory>
         var persisted = await context.Fills.AsNoTracking().SingleAsync(fill => fill.Id == id);
         persisted.Symbol.ShouldBe("ACME");
         persisted.ExecutedAt.Offset.ShouldBe(TimeSpan.Zero);
-        scope.ServiceProvider.GetRequiredService<CapturingFillPublisher>()
-            .Published.ShouldContain(fill => fill.Id == id && fill.Symbol == "ACME");
+        scope.ServiceProvider.GetRequiredService<CapturingSqsClient>()
+            .Published.ShouldContain(fill => fill.FillId == id && fill.Symbol == "ACME");
     }
 
     [Fact]
@@ -167,6 +168,7 @@ public sealed class HttpPipelineTests : IClassFixture<TradeLedgerApiFactory>
     public async Task FillProcessingAndExplain_ReturnSerializedApiContracts()
     {
         // Arrange
+        await ResetLedger();
         const decimal buyQuantity = 100m;
         const decimal sellQuantity = 40m;
         const decimal unitCost = 10m;
@@ -235,13 +237,34 @@ public sealed class HttpPipelineTests : IClassFixture<TradeLedgerApiFactory>
             });
         }
 
+        context.Positions.Add(new PositionEntity
+        {
+            Symbol = symbol,
+            OpenQuantity = remaining,
+            RealisedPnl = realisedPnl,
+            LastAppliedExecutedAt = new DateTimeOffset(2026, 9, 1, 11, 0, 0, TimeSpan.Zero),
+            LastAppliedFillId = id,
+            UpdatedAt = new DateTimeOffset(2026, 9, 1, 11, 0, 0, TimeSpan.Zero)
+        });
+
+        await context.SaveChangesAsync();
+    }
+
+    private async Task ResetLedger()
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var context = scope.ServiceProvider.GetRequiredService<TradeLedgerDbContext>();
+        context.Lots.RemoveRange(await context.Lots.ToListAsync());
+        context.RealisedPnlEntries.RemoveRange(await context.RealisedPnlEntries.ToListAsync());
+        context.Positions.RemoveRange(await context.Positions.ToListAsync());
+        context.Fills.RemoveRange(await context.Fills.ToListAsync());
         await context.SaveChangesAsync();
     }
 
     private async Task ProcessFill(Guid fillId)
     {
         await using var scope = _factory.Services.CreateAsyncScope();
-        await scope.ServiceProvider.GetRequiredService<IProcessFillService>()
+        await scope.ServiceProvider.GetRequiredService<IFillRequestProcessor>()
             .ProcessAsync(fillId, CancellationToken.None);
     }
 

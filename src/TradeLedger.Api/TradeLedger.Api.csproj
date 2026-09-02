@@ -15,13 +15,13 @@
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
         <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
-        <PackageReference Include="Serilog.Formatting.Compact" Version="3.0.0" />
         <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
     </ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="../TradeLedger.Application/TradeLedger.Application.csproj" />
-        <ProjectReference Include="../TradeLedger.Infrastructure/TradeLedger.Infrastructure.csproj" />
+        <ProjectReference Include="../TradeLedger.Database/TradeLedger.Database.csproj" />
+        <ProjectReference Include="../TradeLedger.Common/TradeLedger.Common.csproj" />
     </ItemGroup>
 
 </Project>

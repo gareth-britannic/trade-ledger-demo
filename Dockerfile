@@ -1,8 +1,10 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /source
 
+COPY src/TradeLedger.Common/TradeLedger.Common.csproj src/TradeLedger.Common/
+COPY src/TradeLedger.Domain/TradeLedger.Domain.csproj src/TradeLedger.Domain/
 COPY src/TradeLedger.Application/TradeLedger.Application.csproj src/TradeLedger.Application/
-COPY src/TradeLedger.Infrastructure/TradeLedger.Infrastructure.csproj src/TradeLedger.Infrastructure/
+COPY src/TradeLedger.Database/TradeLedger.Database.csproj src/TradeLedger.Database/
 COPY src/TradeLedger.Api/TradeLedger.Api.csproj src/TradeLedger.Api/
 RUN dotnet restore src/TradeLedger.Api/TradeLedger.Api.csproj
 

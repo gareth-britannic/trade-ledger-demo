@@ -23,7 +23,8 @@
     <ItemGroup>
         <ProjectReference Include="../../src/TradeLedger.Api/TradeLedger.Api.csproj" />
         <ProjectReference Include="../../src/TradeLedger.Application/TradeLedger.Application.csproj" />
-        <ProjectReference Include="../../src/TradeLedger.Infrastructure/TradeLedger.Infrastructure.csproj" />
+        <ProjectReference Include="../../src/TradeLedger.Domain/TradeLedger.Domain.csproj" />
+        <ProjectReference Include="../../src/TradeLedger.Database/TradeLedger.Database.csproj" />
     </ItemGroup>
 
 </Project>

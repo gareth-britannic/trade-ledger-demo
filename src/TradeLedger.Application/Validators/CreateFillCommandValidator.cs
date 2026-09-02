@@ -1,5 +1,6 @@
 using FluentValidation;
 using TradeLedger.Application.Records;
+using TradeLedger.Domain;
 
 namespace TradeLedger.Application.Validators;
 

@@ -1,25 +1,21 @@
 using Serilog;
-using Serilog.Formatting.Compact;
 using TradeLedger.Api.Extensions;
 using TradeLedger.Application;
-using TradeLedger.Infrastructure.Extensions;
+using TradeLedger.Database;
+using TradeLedger.Common;
 
-Log.Logger = new LoggerConfiguration()
-    .WriteTo.Console(new RenderedCompactJsonFormatter())
-    .CreateBootstrapLogger();
+LoggingExtensions.ConfigureBootstrapLogger();
 
 try
 {
     var builder = WebApplication.CreateBuilder(args);
-    builder.Host.UseSerilog((context, services, configuration) => configuration
-        .ReadFrom.Configuration(context.Configuration)
-        .ReadFrom.Services(services)
-        .Enrich.FromLogContext()
-        .WriteTo.Console(new RenderedCompactJsonFormatter()));
+    builder.Host.UseTradeLedgerSerilog();
 
+    builder.Services.AddCommon();
+    builder.Services.AddSqsClient(builder.Configuration, builder.Environment);
     builder.Services.AddApplication();
-    builder.Services.AddInfrastructure(builder.Configuration, builder.Environment);
-    builder.Services.AddInfrastructureHealthChecks();
+    builder.Services.AddDatabase(builder.Configuration);
+    builder.Services.AddDatabaseHealthChecks();
     builder.Services.AddApiServices(builder.Configuration);
 
     var app = builder.Build();

@@ -3,6 +3,7 @@ using FluentValidation.Results;
 using TradeLedger.Application.Exceptions;
 using TradeLedger.Application.Interfaces;
 using TradeLedger.Application.Records;
+using TradeLedger.Domain;
 
 namespace TradeLedger.Application.Services;
 
@@ -11,7 +12,7 @@ public sealed class PositionQueryService(ILotRepository lotRepository) : IPositi
     public async Task<IReadOnlyList<PositionResult>> GetPositionsAsync(CancellationToken cancellationToken)
     {
         var positions = await lotRepository.GetPositionsAsync(cancellationToken);
-        return positions.Select(MapPosition).ToArray();
+        return positions.Select(MapPosition).ToList();
     }
 
     public async Task<IReadOnlyList<LotResult>> GetOpenLotsAsync(
@@ -34,7 +35,7 @@ public sealed class PositionQueryService(ILotRepository lotRepository) : IPositi
             lot.Symbol,
             lot.RemainingQuantity,
             lot.UnitCost,
-            lot.OpenedAt)).ToArray();
+            lot.OpenedAt)).ToList();
     }
 
     private static PositionResult MapPosition(Position position)

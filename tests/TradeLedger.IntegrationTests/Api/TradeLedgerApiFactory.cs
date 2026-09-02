@@ -13,8 +13,10 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TradeLedger.Application;
 using TradeLedger.Application.Interfaces;
+using TradeLedger.Application.Messaging;
 using TradeLedger.Application.Records;
-using TradeLedger.Infrastructure.Database;
+using TradeLedger.Common;
+using TradeLedger.Database;
 
 namespace TradeLedger.IntegrationTests.Api;
 
@@ -30,12 +32,12 @@ public sealed class TradeLedgerApiFactory : WebApplicationFactory<Program>
             {
                 ["Database:ConnectionString"] = "Host=unused;Database=unused;Username=unused;Password=unused",
                 ["FillQueue:Url"] = "https://sqs.example.test/fills.fifo",
-                ["FillProcessing:Enabled"] = "false",
                 ["Authentication:Cognito:Authority"] = "https://cognito.example.test/user-pool",
                 ["Authentication:Cognito:Audience"] = "integration-tests"
             }));
         builder.ConfigureServices(services =>
         {
+            services.AddFillProcessor();
             var databaseName = $"trade-ledger-{Guid.NewGuid():N}";
             services.RemoveAll<DbContextOptions<TradeLedgerDbContext>>();
             services.RemoveAll<IDbContextOptionsConfiguration<TradeLedgerDbContext>>();
@@ -43,9 +45,9 @@ public sealed class TradeLedgerApiFactory : WebApplicationFactory<Program>
             services.AddDbContext<TradeLedgerDbContext>(options =>
                 options.UseInMemoryDatabase(databaseName));
 
-            services.RemoveAll<IFillPublisher>();
-            services.AddSingleton<CapturingFillPublisher>();
-            services.AddSingleton<IFillPublisher>(provider => provider.GetRequiredService<CapturingFillPublisher>());
+            services.RemoveAll<ISqsClient>();
+            services.AddSingleton<CapturingSqsClient>();
+            services.AddSingleton<ISqsClient>(provider => provider.GetRequiredService<CapturingSqsClient>());
             services.RemoveAll<TimeProvider>();
             services.AddSingleton<TimeProvider>(new IntegrationTimeProvider(
                 new DateTimeOffset(2026, 9, 15, 12, 0, 0, TimeSpan.Zero)));
@@ -71,13 +73,22 @@ internal sealed class IntegrationTimeProvider(DateTimeOffset utcNow) : TimeProvi
     public override DateTimeOffset GetUtcNow() => utcNow;
 }
 
-public sealed class CapturingFillPublisher : IFillPublisher
+public sealed class CapturingSqsClient : ISqsClient
 {
-    public List<Fill> Published { get; } = [];
+    public List<FillRequestMessage> Published { get; } = [];
 
-    public Task PublishAsync(Fill fill, CancellationToken cancellationToken)
+    public Task SendAsync<TMessage>(
+        TMessage message,
+        string messageGroupId,
+        string deduplicationId,
+        CancellationToken cancellationToken)
+        where TMessage : notnull
     {
-        Published.Add(fill);
+        if (message is FillRequestMessage fillRequest)
+        {
+            Published.Add(fillRequest);
+        }
+
         return Task.CompletedTask;
     }
 }

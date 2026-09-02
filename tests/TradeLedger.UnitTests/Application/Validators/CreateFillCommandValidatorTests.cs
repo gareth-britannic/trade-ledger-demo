@@ -2,6 +2,7 @@ using Shouldly;
 using TradeLedger.Application;
 using TradeLedger.Application.Records;
 using TradeLedger.Application.Validators;
+using TradeLedger.Domain;
 using Xunit;
 
 namespace TradeLedger.UnitTests.Application.Validators;

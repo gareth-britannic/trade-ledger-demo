@@ -5,6 +5,7 @@ using Serilog.Events;
 using Shouldly;
 using TradeLedger.Api.Middleware;
 using TradeLedger.Application.Services;
+using TradeLedger.Common;
 using Xunit;
 
 namespace TradeLedger.UnitTests.Api.Middleware;

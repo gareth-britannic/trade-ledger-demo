@@ -8,6 +8,7 @@ using TradeLedger.Api.Controllers;
 using TradeLedger.Application;
 using TradeLedger.Application.Interfaces;
 using TradeLedger.Application.Records;
+using TradeLedger.Domain;
 using Xunit;
 
 namespace TradeLedger.UnitTests.Api.Controllers;
@@ -73,7 +74,7 @@ public sealed class ControllerTests
         var action = await controller.Get(CancellationToken.None);
 
         var ok = action.Result.ShouldBeOfType<OkObjectResult>();
-        ok.Value.ShouldBeOfType<PositionResponse[]>()
+        ok.Value.ShouldBeOfType<List<PositionResponse>>()
             .ShouldBe([new PositionResponse("ACME", 10m, 12m, 5m)]);
         service.VerifyAll();
     }
@@ -91,7 +92,7 @@ public sealed class ControllerTests
         var action = await controller.GetLots("acme", CancellationToken.None);
 
         var ok = action.Result.ShouldBeOfType<OkObjectResult>();
-        ok.Value.ShouldBeOfType<LotResponse[]>()
+        ok.Value.ShouldBeOfType<List<LotResponse>>()
             .ShouldBe([new LotResponse(id, "ACME", 10m, 12m, openedAt)]);
         service.VerifyAll();
     }

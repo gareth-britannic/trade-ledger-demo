@@ -2,7 +2,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using TradeLedger.Api.Constants;
 using TradeLedger.Application.Exceptions;
-using TradeLedger.Application.Interfaces;
+using TradeLedger.Common;
 
 namespace TradeLedger.Api.Middleware;
 

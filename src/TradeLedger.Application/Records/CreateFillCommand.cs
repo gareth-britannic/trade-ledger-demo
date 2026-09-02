@@ -1,3 +1,5 @@
+using TradeLedger.Domain;
+
 namespace TradeLedger.Application.Records;
 
 public sealed record CreateFillCommand(

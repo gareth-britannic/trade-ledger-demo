@@ -1,12 +1,14 @@
 using FluentValidation;
 using TradeLedger.Application.Interfaces;
+using TradeLedger.Application.Messaging;
 using TradeLedger.Application.Records;
+using TradeLedger.Common;
 
 namespace TradeLedger.Application.Services;
 
 public sealed class CreateFillService(
-    IFillRepository fillRepository,
-    IFillPublisher fillPublisher,
+    IFillRequestRepository requestRepository,
+    ISqsClient sqsClient,
     IValidator<CreateFillCommand> validator) : ICreateFillService
 {
     public async Task<CreateFillResult> CreateAsync(
@@ -16,7 +18,7 @@ public sealed class CreateFillService(
         ArgumentNullException.ThrowIfNull(command);
         await validator.ValidateAndThrowAsync(command, cancellationToken);
 
-        var fill = Fill.Create(
+        var request = PendingFillRequest.Create(
             command.FillId ?? Guid.NewGuid(),
             command.Symbol,
             command.Side,
@@ -24,11 +26,19 @@ public sealed class CreateFillService(
             command.Price,
             command.ExecutedAt);
 
-        // Persistence intentionally precedes publication. A transactional outbox is required
-        // to close the remaining database/SQS dual-write window.
-        await fillRepository.AddAsync(fill, cancellationToken);
-        await fillPublisher.PublishAsync(fill, cancellationToken);
+        await requestRepository.AddAsync(request, cancellationToken);
+        await sqsClient.SendAsync(
+            new FillRequestMessage(
+                request.Id,
+                request.Symbol,
+                request.Side.ToString(),
+                request.Quantity,
+                request.Price,
+                request.ExecutedAt),
+            request.Symbol,
+            request.Id.ToString("D"),
+            cancellationToken);
 
-        return new CreateFillResult(fill.Id);
+        return new CreateFillResult(request.Id);
     }
 }

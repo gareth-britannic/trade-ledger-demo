@@ -14,5 +14,6 @@ done
 echo "Starting LocalStack and Postgres..."
 docker compose -f "${REPO_ROOT}/docker-compose.yml" up -d --wait
 
+"${SCRIPT_DIR}/migrate-local-database.sh"
 "${SCRIPT_DIR}/bootstrap-terraform.sh"
 "${SCRIPT_DIR}/verify-local-sqs.sh"
