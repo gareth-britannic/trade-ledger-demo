@@ -1,4 +1,3 @@
-using TradeLedger.Application.Exceptions;
 using TradeLedger.Application.Interfaces;
 using TradeLedger.Application.Messaging;
 using TradeLedger.Application.Records;
@@ -10,6 +9,7 @@ namespace TradeLedger.Processor.Messages;
 
 public sealed class FillMessageHandler(
     IFillLedgerUnitOfWork unitOfWork,
+    IFillRequestRepository requestRepository,
     TimeProvider timeProvider,
     FillMessageValidator validator) : ISqsMessageHandler<FillRequestMessage>
 {
@@ -27,11 +27,25 @@ public sealed class FillMessageHandler(
             transactionStarted = true;
 
             var request = await unitOfWork.FindRequestAsync(message.FillId, cancellationToken)
-                ?? throw new ResourceNotFoundException($"Fill request '{message.FillId:D}' was not found.");
+                ?? PendingFillRequest.Create(
+                    message.FillId,
+                    message.Symbol,
+                    Enum.Parse<Side>(message.Side, true),
+                    message.Quantity,
+                    message.Price,
+                    message.ExecutedAt);
             await unitOfWork.AcquireSymbolLockAsync(request.Symbol, cancellationToken);
 
-            request = await unitOfWork.FindRequestAsync(message.FillId, cancellationToken)
-                ?? throw new ResourceNotFoundException($"Fill request '{message.FillId:D}' was not found.");
+            var persistedRequest = await unitOfWork.FindRequestAsync(message.FillId, cancellationToken);
+            if (persistedRequest is null)
+            {
+                await requestRepository.AddAsync(request, cancellationToken);
+            }
+            else
+            {
+                request = persistedRequest;
+            }
+
             if (request.ProcessedAt is not null)
             {
                 await unitOfWork.CommitAsync(cancellationToken);

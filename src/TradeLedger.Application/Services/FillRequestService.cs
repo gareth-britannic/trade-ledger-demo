@@ -7,7 +7,6 @@ using TradeLedger.Common;
 namespace TradeLedger.Application.Services;
 
 public sealed class FillRequestService(
-    IFillRequestRepository requestRepository,
     ISqsClient sqsClient,
     IValidator<CreateFillCommand> validator) : IFillRequestService
 {
@@ -26,7 +25,6 @@ public sealed class FillRequestService(
             command.Price,
             command.ExecutedAt);
 
-        await requestRepository.AddAsync(request, cancellationToken);
         await sqsClient.SendAsync(
             new FillRequestMessage(
                 request.Id,

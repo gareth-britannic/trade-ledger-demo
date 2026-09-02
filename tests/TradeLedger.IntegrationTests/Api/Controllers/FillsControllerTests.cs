@@ -18,7 +18,7 @@ namespace TradeLedger.IntegrationTests.Api.Controllers;
 public sealed class FillsControllerTests(TradeLedgerApiFactory factory)
 {
     [Fact]
-    public async Task Create_ValidRequest_ReturnsAcceptedPersistsPendingRequestAndPublishesMessage()
+    public async Task Create_ValidRequest_ReturnsAcceptedAndPublishesMessage()
     {
         await ResetCaptureAsync();
         var sqs = factory.Services.GetRequiredService<CapturingSqsClient>();
@@ -38,13 +38,7 @@ public sealed class FillsControllerTests(TradeLedgerApiFactory factory)
 
         await using var scope = factory.Services.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<TradeLedgerDbContext>();
-        var persisted = await context.Fills.AsNoTracking().SingleAsync(fill => fill.Id == fillId);
-        persisted.Symbol.ShouldBe("ACME");
-        persisted.Side.ShouldBe(Side.Sell);
-        persisted.Quantity.ShouldBe(10m);
-        persisted.Price.ShouldBe(12.34m);
-        persisted.ExecutedAt.ShouldBe(executedAt.ToUniversalTime());
-        persisted.ProcessedAt.ShouldBeNull();
+        (await context.Fills.AsNoTracking().AnyAsync(fill => fill.Id == fillId)).ShouldBeFalse();
 
         var sent = sqs.Sent.ShouldHaveSingleItem();
         sent.Message.FillId.ShouldBe(fillId);

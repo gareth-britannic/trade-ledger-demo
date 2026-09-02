@@ -1,6 +1,5 @@
 using FluentValidation;
 using Shouldly;
-using TradeLedger.Application.Exceptions;
 using TradeLedger.Application.Interfaces;
 using TradeLedger.Application.Messaging;
 using TradeLedger.Application.Records;
@@ -112,19 +111,24 @@ public sealed class FillMessageHandlerTests
     }
 
     [Fact]
-    public async Task MissingRequest_RollsBackAndThrowsNotFound()
+    public async Task NewRequest_IsPersistedAndProcessed()
     {
         var fill = Fill.Create(Guid.NewGuid(), Symbol, Side.Buy, 10m, 12m, Now);
         var unitOfWork = new FakeUnitOfWork([]);
 
-        await Should.ThrowAsync<ResourceNotFoundException>(() =>
-            Service(unitOfWork).ProcessAsync(Message(fill), Symbol, CancellationToken.None));
+        await Service(unitOfWork).ProcessAsync(Message(fill), Symbol, CancellationToken.None);
 
-        unitOfWork.RolledBack.ShouldBeTrue();
+        unitOfWork.RequestAdded.ShouldBeTrue();
+        unitOfWork.Requests.ShouldHaveSingleItem().Id.ShouldBe(fill.Id);
+        unitOfWork.Committed.ShouldBeTrue();
     }
 
     private static FillMessageHandler Service(IFillLedgerUnitOfWork unitOfWork) =>
-        new(unitOfWork, new FixedTimeProvider(Now), new FillMessageValidator());
+        new(
+            unitOfWork,
+            (IFillRequestRepository)unitOfWork,
+            new FixedTimeProvider(Now),
+            new FillMessageValidator());
 
     private static FillRequestMessage Message(Fill fill) => new(
         fill.Id,
@@ -148,9 +152,16 @@ public sealed class FillMessageHandlerTests
         public override DateTimeOffset GetUtcNow() => now;
     }
 
-    private sealed class FakeUnitOfWork(IReadOnlyList<PendingFillRequest> requests) : IFillLedgerUnitOfWork
+    private sealed class FakeUnitOfWork : IFillLedgerUnitOfWork, IFillRequestRepository
     {
-        public IReadOnlyList<PendingFillRequest> Requests => requests;
+        private readonly List<PendingFillRequest> _requests;
+
+        public FakeUnitOfWork(IReadOnlyList<PendingFillRequest> requests)
+        {
+            _requests = [.. requests];
+        }
+
+        public IReadOnlyList<PendingFillRequest> Requests => _requests;
         public Position? Position { get; private set; }
         public IReadOnlyList<RealisedPnlEntry> RealisedPnlEntries { get; private set; } = [];
         public IReadOnlyCollection<Guid> NewlyProcessedIds { get; private set; } = [];
@@ -160,6 +171,14 @@ public sealed class FillMessageHandlerTests
         public bool Saved { get; private set; }
         public bool Committed { get; private set; }
         public bool RolledBack { get; private set; }
+        public bool RequestAdded { get; private set; }
+
+        public Task AddAsync(PendingFillRequest request, CancellationToken cancellationToken)
+        {
+            _requests.Add(request);
+            RequestAdded = true;
+            return Task.CompletedTask;
+        }
 
         public Task BeginAsync(CancellationToken cancellationToken)
         {
@@ -170,14 +189,15 @@ public sealed class FillMessageHandlerTests
         public Task<PendingFillRequest?> FindRequestAsync(
             Guid requestId,
             CancellationToken cancellationToken) =>
-            Task.FromResult(requests.SingleOrDefault(request => request.Id == requestId));
+            Task.FromResult(_requests.SingleOrDefault(request => request.Id == requestId));
 
         public Task AcquireSymbolLockAsync(string symbol, CancellationToken cancellationToken) =>
             Task.CompletedTask;
 
         public Task<IReadOnlyList<PendingFillRequest>> GetOrderedRequestsAsync(
             string symbol,
-            CancellationToken cancellationToken) => Task.FromResult(requests);
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<PendingFillRequest>>(_requests);
 
         public Task ReplaceSymbolLedgerAsync(
             Position position,
