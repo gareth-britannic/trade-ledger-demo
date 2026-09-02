@@ -14,9 +14,16 @@ resource "aws_security_group" "ecs" {
 
 resource "aws_security_group" "database" {
   name        = "${local.name}-database"
-  description = "Private PostgreSQL; ingress is restricted to ECS tasks."
+  description = "Private PostgreSQL; ingress is restricted to application workloads."
   vpc_id      = module.network.vpc_id
   tags        = merge(local.tags, { Name = "${local.name}-database" })
+}
+
+resource "aws_security_group" "processor" {
+  name        = "${local.name}-processor"
+  description = "Private fill processor Lambda; egress is restricted to PostgreSQL."
+  vpc_id      = module.network.vpc_id
+  tags        = merge(local.tags, { Name = "${local.name}-processor" })
 }
 
 locals {
@@ -45,6 +52,14 @@ locals {
       from_port                    = 5432
       to_port                      = 5432
     }
+    processor_to_database = {
+      security_group_id            = aws_security_group.database.id
+      description                  = "Accept PostgreSQL only from the fill processor Lambda"
+      cidr_ipv4                    = null
+      referenced_security_group_id = aws_security_group.processor.id
+      from_port                    = 5432
+      to_port                      = 5432
+    }
   }
 
   egress_rules = {
@@ -66,6 +81,14 @@ locals {
     }
     ecs_to_database = {
       security_group_id            = aws_security_group.ecs.id
+      description                  = "Connect to PostgreSQL"
+      cidr_ipv4                    = null
+      referenced_security_group_id = aws_security_group.database.id
+      from_port                    = 5432
+      to_port                      = 5432
+    }
+    processor_to_database = {
+      security_group_id            = aws_security_group.processor.id
       description                  = "Connect to PostgreSQL"
       cidr_ipv4                    = null
       referenced_security_group_id = aws_security_group.database.id

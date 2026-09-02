@@ -14,3 +14,9 @@ variable "localstack_endpoint" {
     error_message = "localstack_endpoint must use localhost or 127.0.0.1."
   }
 }
+
+variable "processor_package_path" {
+  description = "Absolute or root-relative path to the packaged .NET 10 processor zip."
+  type        = string
+  default     = "../../../artifacts/trade-ledger-processor.zip"
+}

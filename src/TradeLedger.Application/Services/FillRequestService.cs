@@ -6,10 +6,10 @@ using TradeLedger.Common;
 
 namespace TradeLedger.Application.Services;
 
-public sealed class CreateFillService(
+public sealed class FillRequestService(
     IFillRequestRepository requestRepository,
     ISqsClient sqsClient,
-    IValidator<CreateFillCommand> validator) : ICreateFillService
+    IValidator<CreateFillCommand> validator) : IFillRequestService
 {
     public async Task<CreateFillResult> CreateAsync(
         CreateFillCommand command,

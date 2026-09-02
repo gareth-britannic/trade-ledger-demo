@@ -25,6 +25,19 @@ variable "container_image" {
   }
 }
 
+variable "processor_package_path" {
+  description = "Path to the packaged ARM64 Lambda zip."
+  type        = string
+  default     = "../../../artifacts/trade-ledger-processor.zip"
+}
+
+variable "processor_package_hash" {
+  description = "Optional precomputed base64 SHA-256 used by mocked plans that do not have the package."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
 variable "certificate_arn" {
   description = "ACM certificate ARN for the public HTTPS listener."
   type        = string

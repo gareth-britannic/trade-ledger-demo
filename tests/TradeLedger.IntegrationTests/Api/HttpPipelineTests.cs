@@ -9,8 +9,6 @@ using TradeLedger.Api.Contracts.Fills;
 using TradeLedger.Api.Contracts.Explain;
 using TradeLedger.Api.Contracts.Positions;
 using TradeLedger.Api.Middleware;
-using TradeLedger.Application;
-using TradeLedger.Application.Interfaces;
 using TradeLedger.Database;
 using TradeLedger.Database.Entities;
 using TradeLedger.Domain;
@@ -18,24 +16,19 @@ using Xunit;
 
 namespace TradeLedger.IntegrationTests.Api;
 
-public sealed class HttpPipelineTests : IClassFixture<TradeLedgerApiFactory>
+public sealed class HttpPipelineTests(TradeLedgerApiFactory factory) : IClassFixture<TradeLedgerApiFactory>
 {
     private const string Symbol = "ACME";
     private const string ExplainQuestion = "What's my realised P&L on ACME this month?";
     private const string GetPositionsTool = "get_positions()";
     private const string GetMonthlyPnlTool = "get_realised_pnl(\"ACME\", \"month\")";
     private const string GetLotsTool = "get_lots(\"ACME\")";
-    private static readonly DateTimeOffset BuyExecutedAt =
-        new(2026, 9, 1, 10, 0, 0, TimeSpan.Zero);
-    private static readonly DateTimeOffset SellExecutedAt = BuyExecutedAt.AddDays(1);
-    private readonly TradeLedgerApiFactory _factory;
-
-    public HttpPipelineTests(TradeLedgerApiFactory factory) => _factory = factory;
+    private static readonly DateTimeOffset BuyExecutedAt = new(2026, 9, 1, 10, 0, 0, TimeSpan.Zero);
 
     [Fact]
     public async Task ProtectedEndpoint_WithoutAuthentication_Returns401WithCorrelationHeader()
     {
-        using var client = _factory.CreateClient();
+        using var client = factory.CreateClient();
 
         var response = await client.GetAsync("/api/positions");
 
@@ -46,7 +39,7 @@ public sealed class HttpPipelineTests : IClassFixture<TradeLedgerApiFactory>
     [Fact]
     public async Task Health_WithoutAuthentication_ReturnsPostgresStatus()
     {
-        using var client = _factory.CreateClient();
+        using var client = factory.CreateClient();
 
         var response = await client.GetAsync("/health");
 
@@ -57,7 +50,7 @@ public sealed class HttpPipelineTests : IClassFixture<TradeLedgerApiFactory>
     [Fact]
     public async Task CreateFill_ValidRequest_PersistsPublishesAndReturns202WithStableId()
     {
-        using var client = _factory.CreateAuthenticatedClient();
+        using var client = factory.CreateAuthenticatedClient();
         client.DefaultRequestHeaders.Add(CorrelationIdMiddleware.HeaderName, "http-integration-1");
         var id = Guid.NewGuid();
         var request = new CreateFillRequest(
@@ -73,7 +66,7 @@ public sealed class HttpPipelineTests : IClassFixture<TradeLedgerApiFactory>
         response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
         response.Headers.GetValues(CorrelationIdMiddleware.HeaderName).Single().ShouldBe("http-integration-1");
         (await response.Content.ReadFromJsonAsync<CreateFillResponse>()).ShouldBe(new CreateFillResponse(id));
-        using var scope = _factory.Services.CreateScope();
+        using var scope = factory.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<TradeLedgerDbContext>();
         var persisted = await context.Fills.AsNoTracking().SingleAsync(fill => fill.Id == id);
         persisted.Symbol.ShouldBe("ACME");
@@ -85,7 +78,7 @@ public sealed class HttpPipelineTests : IClassFixture<TradeLedgerApiFactory>
     [Fact]
     public async Task CreateFill_InvalidRequest_ReturnsProblemDetailsWithSameCorrelationId()
     {
-        using var client = _factory.CreateAuthenticatedClient();
+        using var client = factory.CreateAuthenticatedClient();
         client.DefaultRequestHeaders.Add(CorrelationIdMiddleware.HeaderName, "validation-request");
         var request = new CreateFillRequest(null, "bad symbol", Side.Buy, 0m, -1m, default);
 
@@ -102,7 +95,7 @@ public sealed class HttpPipelineTests : IClassFixture<TradeLedgerApiFactory>
     [Fact]
     public async Task CreateFill_MalformedJson_ReturnsModelBindingProblemDetails()
     {
-        using var client = _factory.CreateAuthenticatedClient();
+        using var client = factory.CreateAuthenticatedClient();
         client.DefaultRequestHeaders.Add(CorrelationIdMiddleware.HeaderName, "model-binding-request");
         using var content = new StringContent("{", Encoding.UTF8, "application/json");
 
@@ -120,7 +113,7 @@ public sealed class HttpPipelineTests : IClassFixture<TradeLedgerApiFactory>
     {
         var lotId = Guid.NewGuid();
         await SeedLot(lotId, "OMEGA", 5m, 20m, 7m);
-        using var client = _factory.CreateAuthenticatedClient();
+        using var client = factory.CreateAuthenticatedClient();
 
         var positionsResponse = await client.GetAsync("/api/positions");
         var lotsResponse = await client.GetAsync("/api/positions/omega/lots");
@@ -139,7 +132,7 @@ public sealed class HttpPipelineTests : IClassFixture<TradeLedgerApiFactory>
     [Fact]
     public async Task InvalidRouteSymbol_Returns400ProblemDetails()
     {
-        using var client = _factory.CreateAuthenticatedClient();
+        using var client = factory.CreateAuthenticatedClient();
 
         var response = await client.GetAsync("/api/positions/%24bad/lots");
 
@@ -150,7 +143,7 @@ public sealed class HttpPipelineTests : IClassFixture<TradeLedgerApiFactory>
     [Fact]
     public async Task DevelopmentSwagger_DescribesStableOperationsAndBearerAuth()
     {
-        using var client = _factory.CreateClient();
+        using var client = factory.CreateClient();
 
         var response = await client.GetAsync("/swagger/v1/swagger.json");
 
@@ -165,37 +158,18 @@ public sealed class HttpPipelineTests : IClassFixture<TradeLedgerApiFactory>
     }
 
     [Fact]
-    public async Task FillProcessingAndExplain_ReturnSerializedApiContracts()
+    public async Task PositionAndExplainEndpoints_ReturnSerializedApiContracts()
     {
         // Arrange
         await ResetLedger();
-        const decimal buyQuantity = 100m;
-        const decimal sellQuantity = 40m;
+        const decimal remainingQuantity = 60m;
         const decimal unitCost = 10m;
-        const decimal sellPrice = 15m;
-        const decimal remainingQuantity = buyQuantity - sellQuantity;
-        const decimal realisedPnl = sellQuantity * (sellPrice - unitCost);
-        using var client = _factory.CreateAuthenticatedClient();
+        const decimal realisedPnl = 200m;
+        using var client = factory.CreateAuthenticatedClient();
         var buyId = Guid.NewGuid();
-        var sellId = Guid.NewGuid();
+        await SeedLot(buyId, Symbol, remainingQuantity, unitCost, realisedPnl);
 
         // Act
-        var buyResponse = await client.PostAsJsonAsync("/api/fills", new CreateFillRequest(
-            buyId,
-            Symbol,
-            Side.Buy,
-            buyQuantity,
-            unitCost,
-            BuyExecutedAt));
-        await ProcessFill(buyId);
-        var sellResponse = await client.PostAsJsonAsync("/api/fills", new CreateFillRequest(
-            sellId,
-            Symbol,
-            Side.Sell,
-            sellQuantity,
-            sellPrice,
-            SellExecutedAt));
-        await ProcessFill(sellId);
         var positionsResponse = await client.GetAsync("/api/positions");
         var lotsResponse = await client.GetAsync($"/api/positions/{Symbol}/lots");
         var explainResponse = await client.PostAsJsonAsync(
@@ -203,8 +177,6 @@ public sealed class HttpPipelineTests : IClassFixture<TradeLedgerApiFactory>
             new ExplainRequest(ExplainQuestion));
 
         // Assert
-        await AssertAcceptedFillResponseAsync(buyResponse, buyId);
-        await AssertAcceptedFillResponseAsync(sellResponse, sellId);
         await AssertPositionsResponseAsync(
             positionsResponse,
             new PositionResponse(Symbol, remainingQuantity, unitCost, realisedPnl));
@@ -216,7 +188,7 @@ public sealed class HttpPipelineTests : IClassFixture<TradeLedgerApiFactory>
 
     private async Task SeedLot(Guid id, string symbol, decimal remaining, decimal cost, decimal realisedPnl)
     {
-        using var scope = _factory.Services.CreateScope();
+        using var scope = factory.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<TradeLedgerDbContext>();
         context.Lots.Add(new LotEntity
         {
@@ -252,27 +224,13 @@ public sealed class HttpPipelineTests : IClassFixture<TradeLedgerApiFactory>
 
     private async Task ResetLedger()
     {
-        await using var scope = _factory.Services.CreateAsyncScope();
+        await using var scope = factory.Services.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<TradeLedgerDbContext>();
         context.Lots.RemoveRange(await context.Lots.ToListAsync());
         context.RealisedPnlEntries.RemoveRange(await context.RealisedPnlEntries.ToListAsync());
         context.Positions.RemoveRange(await context.Positions.ToListAsync());
         context.Fills.RemoveRange(await context.Fills.ToListAsync());
         await context.SaveChangesAsync();
-    }
-
-    private async Task ProcessFill(Guid fillId)
-    {
-        await using var scope = _factory.Services.CreateAsyncScope();
-        await scope.ServiceProvider.GetRequiredService<IFillRequestProcessor>()
-            .ProcessAsync(fillId, CancellationToken.None);
-    }
-
-    private static async Task AssertAcceptedFillResponseAsync(HttpResponseMessage response, Guid fillId)
-    {
-        response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
-        (await response.Content.ReadFromJsonAsync<CreateFillResponse>())
-            .ShouldBe(new CreateFillResponse(fillId));
     }
 
     private static async Task AssertPositionsResponseAsync(

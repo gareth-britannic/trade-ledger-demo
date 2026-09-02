@@ -48,8 +48,10 @@ realised P&L entry for each processed sell, and marks the fill with `processed_a
 the P&L entry is the fill's UTC execution time, so period queries such as "this month" are accurate.
 `processed_at` makes repeated SQS delivery idempotent.
 
-The processing workflow lives in Application behind `IFillRequestProcessor`, so a queue-triggered
-host can invoke the same use case without moving FIFO or persistence logic into its adapter.
+The Lambda entry point delegates the SQS event directly to `SqsMessageHandler<FillRequestMessage>`.
+The handler owns timeout handling, structured logs, per-message correlation and DI scopes, JSON
+deserialization, FIFO group blocking, and partial-batch failures. It then calls `FillMessageHandler`,
+which validates the message and invokes the application processor.
 
 Fill acceptance deliberately persists before publishing. This required sequence is not atomic: a
 queue failure can leave a persisted fill unpublished. Unique fill IDs and FIFO deduplication make

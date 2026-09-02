@@ -24,6 +24,7 @@ public static class DependencyInjection
             .Validate(options => Uri.TryCreate(options.Url, UriKind.Absolute, out _),
                 $"{SqsQueueOptions.SectionName}:{nameof(SqsQueueOptions.Url)} must be an absolute queue URL.")
             .ValidateOnStart();
+
         services.AddOptions<LocalAwsOptions>()
             .Bind(configuration.GetSection(LocalAwsOptions.SectionName))
             .Validate(options => environment.IsDevelopment() || string.IsNullOrWhiteSpace(options.ServiceUrl),
@@ -31,8 +32,10 @@ public static class DependencyInjection
             .Validate(HasCompleteLocalConfiguration,
                 $"Development LocalStack requires {LocalAwsOptions.SectionName} region and credentials.")
             .ValidateOnStart();
+
         services.AddSingleton<IAmazonSQS>(_ => CreateSqsClient(configuration, environment));
         services.AddScoped<ISqsClient, SqsClient>();
+        
         return services;
     }
 

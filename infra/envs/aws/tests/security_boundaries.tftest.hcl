@@ -11,6 +11,12 @@ mock_provider "aws" {
       }]
     }
   }
+
+  mock_data "aws_secretsmanager_secret_version" {
+    defaults = {
+      secret_string = "{\"username\":\"trade_ledger_adm\",\"password\":\"test-password\"}"
+    }
+  }
 }
 
 override_resource {
@@ -37,19 +43,29 @@ override_resource {
   }
 }
 
-run "allows_only_internet_to_alb_to_ecs_to_database" {
+override_resource {
+  target          = aws_security_group.processor
+  override_during = plan
+  values = {
+    id = "sg-processor"
+  }
+}
+
+run "enforces_public_api_and_private_database_boundaries" {
   command = plan
 
   variables {
-    container_image   = "public.example/trade-ledger@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-    certificate_arn   = "arn:aws:acm:eu-west-2:123456789012:certificate/test"
-    cognito_authority = "https://cognito-idp.eu-west-2.amazonaws.com/eu-west-2_example"
-    cognito_audience  = "example-client"
+    container_image        = "public.example/trade-ledger@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    certificate_arn        = "arn:aws:acm:eu-west-2:123456789012:certificate/test"
+    cognito_authority      = "https://cognito-idp.eu-west-2.amazonaws.com/eu-west-2_example"
+    cognito_audience       = "example-client"
+    processor_package_path = "/tmp/trade-ledger-processor.zip"
+    processor_package_hash = "dGVzdC1oYXNo"
   }
 
   assert {
     condition = (
-      toset(keys(local.ingress_rules)) == toset(["internet_to_alb_https", "alb_to_ecs", "ecs_to_database"]) &&
+      toset(keys(local.ingress_rules)) == toset(["internet_to_alb_https", "alb_to_ecs", "ecs_to_database", "processor_to_database"]) &&
       aws_vpc_security_group_ingress_rule.this["internet_to_alb_https"].cidr_ipv4 == "0.0.0.0/0" &&
       aws_vpc_security_group_ingress_rule.this["internet_to_alb_https"].from_port == 443 &&
       aws_vpc_security_group_ingress_rule.this["internet_to_alb_https"].to_port == 443 &&
@@ -82,7 +98,7 @@ run "allows_only_internet_to_alb_to_ecs_to_database" {
 
   assert {
     condition = (
-      toset(keys(local.egress_rules)) == toset(["alb_to_ecs", "ecs_https", "ecs_to_database"]) &&
+      toset(keys(local.egress_rules)) == toset(["alb_to_ecs", "ecs_https", "ecs_to_database", "processor_to_database"]) &&
       aws_vpc_security_group_egress_rule.this["alb_to_ecs"].referenced_security_group_id == aws_security_group.ecs.id &&
       aws_vpc_security_group_egress_rule.this["alb_to_ecs"].from_port == 8080 &&
       aws_vpc_security_group_egress_rule.this["ecs_https"].cidr_ipv4 == "0.0.0.0/0" &&
@@ -90,6 +106,18 @@ run "allows_only_internet_to_alb_to_ecs_to_database" {
       aws_vpc_security_group_egress_rule.this["ecs_to_database"].referenced_security_group_id == aws_security_group.database.id &&
       aws_vpc_security_group_egress_rule.this["ecs_to_database"].from_port == 5432
     )
-    error_message = "Egress must be limited to ALB-to-ECS, ECS HTTPS, and ECS-to-database traffic."
+    error_message = "Egress must be limited to the explicit ALB, ECS, and processor workload paths."
+  }
+
+  assert {
+    condition = (
+      aws_vpc_security_group_ingress_rule.this["processor_to_database"].referenced_security_group_id == aws_security_group.processor.id &&
+      aws_vpc_security_group_ingress_rule.this["processor_to_database"].security_group_id == aws_security_group.database.id &&
+      aws_vpc_security_group_ingress_rule.this["processor_to_database"].from_port == 5432 &&
+      aws_vpc_security_group_egress_rule.this["processor_to_database"].security_group_id == aws_security_group.processor.id &&
+      aws_vpc_security_group_egress_rule.this["processor_to_database"].referenced_security_group_id == aws_security_group.database.id &&
+      aws_vpc_security_group_egress_rule.this["processor_to_database"].to_port == 5432
+    )
+    error_message = "The processor Lambda must be able to reach only the database security group on PostgreSQL."
   }
 }

@@ -34,6 +34,37 @@ module "database" {
   tags              = local.tags
 }
 
+data "aws_secretsmanager_secret_version" "database" {
+  secret_id = module.database.master_user_secret_arn
+}
+
+locals {
+  database_credentials = jsondecode(data.aws_secretsmanager_secret_version.database.secret_string)
+}
+
+module "processor_lambda" {
+  source = "../../modules/processor-lambda"
+
+  name               = "trade-ledger-processor"
+  package_path       = abspath(var.processor_package_path)
+  package_hash       = var.processor_package_hash != null ? var.processor_package_hash : filebase64sha256(abspath(var.processor_package_path))
+  fill_queue_arn     = module.fill_queue.queue_arn
+  aws_region         = var.aws_region
+  subnet_ids         = module.network.application_subnet_ids
+  security_group_ids = [aws_security_group.processor.id]
+  environment_variables = {
+    DOTNET_ENVIRONMENT             = "Production"
+    Database__Host                 = module.database.address
+    Database__Port                 = tostring(module.database.port)
+    Database__Name                 = "trade_ledger"
+    Database__Username             = local.database_credentials.username
+    Database__Password             = local.database_credentials.password
+    Serilog__MinimumLevel__Default = "Information"
+  }
+
+  tags = local.tags
+}
+
 module "public_api_edge" {
   source = "../../modules/public-api-edge"
 

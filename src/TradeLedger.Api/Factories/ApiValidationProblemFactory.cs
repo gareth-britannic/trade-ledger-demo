@@ -18,11 +18,14 @@ internal static class ApiValidationProblemFactory
             Status = StatusCodes.Status400BadRequest,
             Title = ValidationTitle,
             Type = ProblemTypes.Validation,
-            Instance = context.HttpContext.Request.Path
+            Instance = context.HttpContext.Request.Path,
+            Extensions =
+            {
+                [ProblemDetailsMetadata.CorrelationIdExtension] = context.HttpContext.RequestServices
+                    .GetRequiredService<ICorrelationIdProvider>()
+                    .CorrelationId
+            }
         };
-        problem.Extensions[ProblemDetailsMetadata.CorrelationIdExtension] = context.HttpContext.RequestServices
-            .GetRequiredService<ICorrelationIdProvider>()
-            .CorrelationId;
 
         return new ContentResult
         {

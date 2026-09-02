@@ -2,7 +2,7 @@
 
 The repository has two intentionally separate Terraform roots:
 
-- `infra/envs/local` is applied to LocalStack and proves the SQS messaging loop.
+- `infra/envs/local` is applied to LocalStack and proves the SQS-triggered Lambda loop.
 - `infra/envs/aws` is a production-shaped, plan-tested AWS reference
   architecture. It is tested with a mocked provider and has not been deployed.
 
@@ -20,12 +20,15 @@ flowchart LR
   ALB -->|HTTP 8080| ECS["ECS Fargate<br/>2 private app subnets"]
   ECS -->|PostgreSQL 5432| RDS["Encrypted RDS PostgreSQL<br/>2 isolated DB subnets"]
   ECS -->|SendMessage only| SQS["SQS FIFO"]
+  SQS -->|Event source mapping| Lambda["ARM64 processor Lambda<br/>private app subnets"]
+  Lambda -->|PostgreSQL 5432| RDS
   SQS --> DLQ["FIFO DLQ"]
 ```
 
 Security groups encode the same trust chain: public HTTPS can reach only the
 ALB; ECS accepts traffic only from the ALB security group; RDS accepts
-PostgreSQL only from the ECS security group. ECS tasks receive no public IPs.
+PostgreSQL only from the ECS and processor Lambda security groups. Neither ECS
+tasks nor the Lambda receive public IPs.
 
 The modules are deliberately composed in a flat tree:
 
@@ -34,6 +37,7 @@ The modules are deliberately composed in a flat tree:
 | `network` | Two-AZ VPC, public/app/database subnet tiers, routing and NAT |
 | `public-api-edge` | HTTPS ALB, target group, WAF and AWS managed rules |
 | `api-service` | Private Fargate service, logs, IAM and deployment controls |
+| `processor-lambda` | ARM64 SQS consumer, environment configuration, logs, IAM and VPC access |
 | `database` | Private encrypted RDS, managed credentials and deletion controls |
 | `fill-queue` | FIFO queue, FIFO DLQ and redrive policies |
 
@@ -49,11 +53,13 @@ files use a mocked AWS provider to check the planned resource graph:
 | RDS is private, encrypted and deletion-protected | `modules/database/tests` |
 | HTTPS ALB and associated AWS-managed WAF rules | `modules/public-api-edge/tests` |
 | Private ECS tasks and queue-scoped IAM | `modules/api-service/tests` |
-| Internet → ALB → ECS → RDS security-group chain | `envs/aws/tests` |
+| Private processor Lambda, required environment and queue-scoped IAM | `modules/processor-lambda/tests` |
+| Internet → ALB → ECS/Lambda → RDS security-group boundaries | `envs/aws/tests` |
 
 These tests validate Terraform configuration and architectural invariants. They
 do not claim to verify AWS control-plane or runtime behaviour; that would
-require an AWS deployment. LocalStack integration currently covers SQS only.
+require an AWS deployment. LocalStack integration covers the real SQS event
+source mapping and Lambda processor.
 
 ### Reference-environment cost and availability choices
 
@@ -87,6 +93,8 @@ The local environment runs Postgres and LocalStack from the root
 - `trade-ledger-fills.fifo`, with content-based deduplication disabled so the
   producer must use the fill ID as `MessageDeduplicationId`.
 - `trade-ledger-fills-dlq.fifo`, with a redrive policy after three receives.
+- the ARM64 .NET 10 processor Lambda and FIFO event source mapping with partial
+  batch failure reporting.
 
 The queue is defined in `infra/modules/fill-queue` so later AWS environments can
 reuse the same queue semantics.
@@ -103,9 +111,17 @@ From the repository root:
 deploy/scripts/bootstrap-all.sh
 ```
 
-This starts both containers, initializes and applies Terraform, then sends and
-receives a smoke-test message using an explicit fill ID for deduplication.
+This starts both containers, applies database migrations, packages the ARM64
+Lambda, and initializes and applies Terraform.
 Terraform state and Postgres data are local and ignored by Git/Docker.
+
+Run the real ordering and idempotency integration test with:
+
+```bash
+TRADE_LEDGER_RUN_LOCALSTACK_INTEGRATION=1 dotnet test \
+  tests/TradeLedger.IntegrationTests/TradeLedger.IntegrationTests.csproj \
+  --filter FullyQualifiedName~LocalStackOrderingTests
+```
 
 ## Stop
 

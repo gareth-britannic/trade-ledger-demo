@@ -25,6 +25,7 @@
         <ProjectReference Include="../../src/TradeLedger.Application/TradeLedger.Application.csproj" />
         <ProjectReference Include="../../src/TradeLedger.Domain/TradeLedger.Domain.csproj" />
         <ProjectReference Include="../../src/TradeLedger.Database/TradeLedger.Database.csproj" />
+        <ProjectReference Include="../../src/TradeLedger.Processor/TradeLedger.Processor.csproj" />
     </ItemGroup>
 
 </Project>

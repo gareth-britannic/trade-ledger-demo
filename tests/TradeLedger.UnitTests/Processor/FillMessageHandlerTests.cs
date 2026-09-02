@@ -1,29 +1,30 @@
+using FluentValidation;
 using Shouldly;
 using TradeLedger.Application.Exceptions;
 using TradeLedger.Application.Interfaces;
+using TradeLedger.Application.Messaging;
 using TradeLedger.Application.Records;
-using TradeLedger.Application.Services;
 using TradeLedger.Domain;
+using TradeLedger.Processor.Messages;
+using TradeLedger.Processor.Validation;
 using Xunit;
 
-namespace TradeLedger.UnitTests.Application.Services;
+namespace TradeLedger.UnitTests.Processor;
 
-public sealed class FillRequestProcessorTests
+public sealed class FillMessageHandlerTests
 {
     private const string Symbol = "ACME";
     private static readonly DateTimeOffset Now =
         new(2026, 9, 1, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
-    public async Task Apply_Buy_RebuildsLotAndPositionAndStampsPendingFill()
+    public async Task Buy_RebuildsLotAndPositionAndStampsPendingRequest()
     {
         var buy = Fill.Create(Guid.NewGuid(), Symbol, Side.Buy, 10m, 12m, Now.AddMinutes(-1));
         var unitOfWork = new FakeUnitOfWork([Request(buy)]);
 
-        var result = await Service(unitOfWork).ProcessAsync(buy.Id, CancellationToken.None);
+        await Service(unitOfWork).ProcessAsync(Message(buy), Symbol, CancellationToken.None);
 
-        result.Outcome.ShouldBe(FillProcessingOutcome.Applied);
-        result.RebuiltFromHistory.ShouldBeTrue();
         unitOfWork.Position.ShouldNotBeNull().OpenLots.ShouldHaveSingleItem()
             .ShouldBe(new Lot(buy.Id, Symbol, 10m, 12m, buy.ExecutedAt));
         unitOfWork.NewlyProcessedIds.ShouldBe([buy.Id]);
@@ -33,7 +34,7 @@ public sealed class FillRequestProcessorTests
     }
 
     [Fact]
-    public async Task Apply_Sell_UsesExecutionOrderedFifoAndCumulativeRealisedPnl()
+    public async Task Sell_UsesExecutionOrderedFifoAndCumulativeRealisedPnl()
     {
         var earlyBuy = Fill.Create(Guid.Parse("00000000-0000-0000-0000-000000000002"),
             Symbol, Side.Buy, 100m, 20m, Now.AddMinutes(-3));
@@ -42,7 +43,7 @@ public sealed class FillRequestProcessorTests
         var sell = Fill.Create(Guid.NewGuid(), Symbol, Side.Sell, 100m, 30m, Now.AddMinutes(-1));
         var unitOfWork = new FakeUnitOfWork([Request(earlyBuy), Request(laterBuy), Request(sell)]);
 
-        await Service(unitOfWork).ProcessAsync(sell.Id, CancellationToken.None);
+        await Service(unitOfWork).ProcessAsync(Message(sell), Symbol, CancellationToken.None);
 
         var position = unitOfWork.Position.ShouldNotBeNull();
         position.OpenLots.ShouldBe([
@@ -53,7 +54,7 @@ public sealed class FillRequestProcessorTests
     }
 
     [Fact]
-    public async Task Apply_IdenticalTimestamps_UsesRepositoryFillIdTieBreakerOrder()
+    public async Task IdenticalTimestamps_UsesRepositoryFillIdTieBreakerOrder()
     {
         var timestamp = Now.AddMinutes(-1);
         var first = Fill.Create(Guid.Parse("00000000-0000-0000-0000-000000000001"),
@@ -62,7 +63,7 @@ public sealed class FillRequestProcessorTests
             Symbol, Side.Buy, 1m, 20m, timestamp);
         var unitOfWork = new FakeUnitOfWork([Request(first), Request(second)]);
 
-        await Service(unitOfWork).ProcessAsync(second.Id, CancellationToken.None);
+        await Service(unitOfWork).ProcessAsync(Message(second), Symbol, CancellationToken.None);
 
         unitOfWork.Position.ShouldNotBeNull().OpenLots.Select(lot => lot.Id)
             .ShouldBe([first.Id, second.Id]);
@@ -70,29 +71,40 @@ public sealed class FillRequestProcessorTests
     }
 
     [Fact]
-    public async Task Apply_AlreadyProcessedFill_IsNoOpAndPreservesTimestamp()
+    public async Task AlreadyProcessedRequest_IsNoOpAndPreservesTimestamp()
     {
         var originalTimestamp = Now.AddHours(-1);
         var fill = Fill.Create(Guid.NewGuid(), Symbol, Side.Buy, 10m, 12m, Now.AddDays(-1));
         var unitOfWork = new FakeUnitOfWork([Request(fill, originalTimestamp)]);
 
-        var result = await Service(unitOfWork).ProcessAsync(fill.Id, CancellationToken.None);
+        await Service(unitOfWork).ProcessAsync(Message(fill), Symbol, CancellationToken.None);
 
-        result.Outcome.ShouldBe(FillProcessingOutcome.AlreadyProcessed);
-        result.OriginalProcessedAt.ShouldBe(originalTimestamp);
+        unitOfWork.Requests.ShouldHaveSingleItem().ProcessedAt.ShouldBe(originalTimestamp);
         unitOfWork.Position.ShouldBeNull();
         unitOfWork.Saved.ShouldBeFalse();
         unitOfWork.Committed.ShouldBeTrue();
     }
 
     [Fact]
-    public async Task Apply_InvalidReplay_RollsBackAllState()
+    public async Task InvalidMessageGroup_IsRejectedBeforeStartingTransaction()
+    {
+        var fill = Fill.Create(Guid.NewGuid(), Symbol, Side.Buy, 10m, 12m, Now);
+        var unitOfWork = new FakeUnitOfWork([Request(fill)]);
+
+        await Should.ThrowAsync<ValidationException>(() =>
+            Service(unitOfWork).ProcessAsync(Message(fill), "BETA", CancellationToken.None));
+
+        unitOfWork.Begun.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task InvalidReplay_RollsBackAllState()
     {
         var sell = Fill.Create(Guid.NewGuid(), Symbol, Side.Sell, 10m, 20m, Now);
         var unitOfWork = new FakeUnitOfWork([Request(sell)]);
 
         await Should.ThrowAsync<InvalidOperationException>(() =>
-            Service(unitOfWork).ProcessAsync(sell.Id, CancellationToken.None));
+            Service(unitOfWork).ProcessAsync(Message(sell), Symbol, CancellationToken.None));
 
         unitOfWork.RolledBack.ShouldBeTrue();
         unitOfWork.Saved.ShouldBeFalse();
@@ -100,18 +112,27 @@ public sealed class FillRequestProcessorTests
     }
 
     [Fact]
-    public async Task Apply_MissingFill_RollsBackAndThrowsNotFound()
+    public async Task MissingRequest_RollsBackAndThrowsNotFound()
     {
+        var fill = Fill.Create(Guid.NewGuid(), Symbol, Side.Buy, 10m, 12m, Now);
         var unitOfWork = new FakeUnitOfWork([]);
 
         await Should.ThrowAsync<ResourceNotFoundException>(() =>
-            Service(unitOfWork).ProcessAsync(Guid.NewGuid(), CancellationToken.None));
+            Service(unitOfWork).ProcessAsync(Message(fill), Symbol, CancellationToken.None));
 
         unitOfWork.RolledBack.ShouldBeTrue();
     }
 
-    private static FillRequestProcessor Service(IFillLedgerUnitOfWork unitOfWork) =>
-        new(unitOfWork, new FixedTimeProvider(Now));
+    private static FillMessageHandler Service(IFillLedgerUnitOfWork unitOfWork) =>
+        new(unitOfWork, new FixedTimeProvider(Now), new FillMessageValidator());
+
+    private static FillRequestMessage Message(Fill fill) => new(
+        fill.Id,
+        fill.Symbol,
+        fill.Side.ToString(),
+        fill.Quantity,
+        fill.Price,
+        fill.ExecutedAt);
 
     private static PendingFillRequest Request(Fill fill, DateTimeOffset? processedAt = null) => new(
         fill.Id,
@@ -129,16 +150,22 @@ public sealed class FillRequestProcessorTests
 
     private sealed class FakeUnitOfWork(IReadOnlyList<PendingFillRequest> requests) : IFillLedgerUnitOfWork
     {
+        public IReadOnlyList<PendingFillRequest> Requests => requests;
         public Position? Position { get; private set; }
         public IReadOnlyList<RealisedPnlEntry> RealisedPnlEntries { get; private set; } = [];
         public IReadOnlyCollection<Guid> NewlyProcessedIds { get; private set; } = [];
         public DateTimeOffset ProcessedAt { get; private set; }
         public PendingFillRequest? Watermark { get; private set; }
+        public bool Begun { get; private set; }
         public bool Saved { get; private set; }
         public bool Committed { get; private set; }
         public bool RolledBack { get; private set; }
 
-        public Task BeginAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task BeginAsync(CancellationToken cancellationToken)
+        {
+            Begun = true;
+            return Task.CompletedTask;
+        }
 
         public Task<PendingFillRequest?> FindRequestAsync(
             Guid requestId,

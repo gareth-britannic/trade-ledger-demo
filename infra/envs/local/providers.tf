@@ -8,6 +8,10 @@ provider "aws" {
   skip_requesting_account_id  = true
 
   endpoints {
-    sqs = var.localstack_endpoint
+    cloudwatchlogs = var.localstack_endpoint
+    iam            = var.localstack_endpoint
+    lambda         = var.localstack_endpoint
+    sqs            = var.localstack_endpoint
+    sts            = var.localstack_endpoint
   }
 }

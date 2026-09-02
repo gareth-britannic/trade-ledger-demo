@@ -47,7 +47,7 @@ public sealed class ControllerTests
     public async Task CreateFill_ReturnsAcceptedWithFillId_AndCallsOneServiceMethod()
     {
         var id = Guid.NewGuid();
-        var service = new Mock<ICreateFillService>();
+        var service = new Mock<IFillRequestService>();
         service.Setup(instance => instance.CreateAsync(It.IsAny<CreateFillCommand>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CreateFillResult(id));
         var controller = new FillsController(service.Object);

@@ -11,7 +11,7 @@ using Xunit;
 
 namespace TradeLedger.UnitTests.Application.Services;
 
-public sealed class CreateFillServiceTests
+public sealed class FillRequestServiceTests
 {
     [Fact]
     public async Task Create_PersistsPendingRequestThenSendsTypedMessage()
@@ -33,7 +33,7 @@ public sealed class CreateFillServiceTests
             .Callback<FillRequestMessage, string, string, CancellationToken>(
                 (message, _, _, _) => sent = message)
             .Returns(Task.CompletedTask);
-        var service = new CreateFillService(repository.Object, queue.Object, new CreateFillCommandValidator());
+        var service = new FillRequestService(repository.Object, queue.Object, new CreateFillCommandValidator());
 
         var result = await service.CreateAsync(Command(fillId, " acme "), source.Token);
 
@@ -54,7 +54,7 @@ public sealed class CreateFillServiceTests
         repository.Setup(instance => instance.AddAsync(
                 It.IsAny<PendingFillRequest>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("database unavailable"));
-        var service = new CreateFillService(repository.Object, queue.Object, new CreateFillCommandValidator());
+        var service = new FillRequestService(repository.Object, queue.Object, new CreateFillCommandValidator());
 
         await Should.ThrowAsync<InvalidOperationException>(() =>
             service.CreateAsync(Command(Guid.NewGuid(), "ACME"), CancellationToken.None));
@@ -80,7 +80,7 @@ public sealed class CreateFillServiceTests
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("queue unavailable"));
-        var service = new CreateFillService(repository.Object, queue.Object, new CreateFillCommandValidator());
+        var service = new FillRequestService(repository.Object, queue.Object, new CreateFillCommandValidator());
 
         var exception = await Should.ThrowAsync<InvalidOperationException>(() =>
             service.CreateAsync(Command(Guid.NewGuid(), "ACME"), CancellationToken.None));

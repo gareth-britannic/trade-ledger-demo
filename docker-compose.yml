@@ -2,11 +2,12 @@ services:
   localstack:
     image: localstack/localstack:3.0
     environment:
-      SERVICES: sqs
+      SERVICES: sqs,lambda,iam,sts,logs
       AWS_DEFAULT_REGION: eu-west-2
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
       DEBUG: "0"
+      LAMBDA_DOCKER_NETWORK: trade-ledger-local
     ports:
       - "4566:4566"
     healthcheck:
@@ -15,6 +16,10 @@ services:
       timeout: 5s
       retries: 20
       start_period: 5s
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - trade-ledger-local
 
   postgres:
     image: postgres:16-alpine
@@ -32,6 +37,12 @@ services:
       timeout: 5s
       retries: 20
       start_period: 5s
+    networks:
+      - trade-ledger-local
 
 volumes:
   postgres-data:
+
+networks:
+  trade-ledger-local:
+    name: trade-ledger-local

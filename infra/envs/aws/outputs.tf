@@ -12,3 +12,8 @@ output "database_address" {
   description = "Private RDS endpoint."
   value       = module.database.address
 }
+
+output "processor_lambda_name" {
+  description = "Fill processor Lambda function name."
+  value       = module.processor_lambda.function_name
+}

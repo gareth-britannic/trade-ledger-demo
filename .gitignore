@@ -6,5 +6,6 @@
 
 bin/
 obj/
+artifacts/
 .idea/
 .DS_Store

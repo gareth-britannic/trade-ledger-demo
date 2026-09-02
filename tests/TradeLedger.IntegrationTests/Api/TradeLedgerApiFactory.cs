@@ -11,8 +11,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using TradeLedger.Application;
-using TradeLedger.Application.Interfaces;
 using TradeLedger.Application.Messaging;
 using TradeLedger.Application.Records;
 using TradeLedger.Common;
@@ -22,7 +20,7 @@ namespace TradeLedger.IntegrationTests.Api;
 
 public sealed class TradeLedgerApiFactory : WebApplicationFactory<Program>
 {
-    public const string AuthenticationScheme = "IntegrationTest";
+    private const string AuthenticationScheme = "IntegrationTest";
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -37,7 +35,6 @@ public sealed class TradeLedgerApiFactory : WebApplicationFactory<Program>
             }));
         builder.ConfigureServices(services =>
         {
-            services.AddFillProcessor();
             var databaseName = $"trade-ledger-{Guid.NewGuid():N}";
             services.RemoveAll<DbContextOptions<TradeLedgerDbContext>>();
             services.RemoveAll<IDbContextOptionsConfiguration<TradeLedgerDbContext>>();

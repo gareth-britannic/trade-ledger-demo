@@ -12,7 +12,7 @@ namespace TradeLedger.Api.Controllers;
 [Route(ApiRoutes.Fills)]
 [Authorize]
 [Produces(ApiMediaTypes.Json, ApiMediaTypes.ProblemJson)]
-public sealed class FillsController(ICreateFillService createFillService) : ControllerBase
+public sealed class FillsController(IFillRequestService fillRequestService) : ControllerBase
 {
     /// <summary>Accepts and queues a fill.</summary>
     /// <remarks>
@@ -32,7 +32,7 @@ public sealed class FillsController(ICreateFillService createFillService) : Cont
     {
         var command = new CreateFillCommand(request.FillId, request.Symbol!, request.Side,
             request.Quantity, request.Price, request.ExecutedAt);
-        var result = await createFillService.CreateAsync(command, cancellationToken);
+        var result = await fillRequestService.CreateAsync(command, cancellationToken);
         return Accepted(new CreateFillResponse(result.FillId));
     }
 }

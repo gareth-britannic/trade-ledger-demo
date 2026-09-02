@@ -120,6 +120,7 @@ jobs:
           - infra/modules/database
           - infra/modules/public-api-edge
           - infra/modules/api-service
+          - infra/modules/processor-lambda
           - infra/envs/aws
 
     steps:

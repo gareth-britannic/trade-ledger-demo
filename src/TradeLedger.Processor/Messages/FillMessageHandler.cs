@@ -1,23 +1,24 @@
 using TradeLedger.Application.Exceptions;
 using TradeLedger.Application.Interfaces;
+using TradeLedger.Application.Messaging;
 using TradeLedger.Application.Records;
 using TradeLedger.Domain;
+using TradeLedger.Processor.Handlers;
+using TradeLedger.Processor.Validation;
 
-namespace TradeLedger.Application.Services;
+namespace TradeLedger.Processor.Messages;
 
-/// <summary>Applies a queued fill request to the ledger inside one serialized transaction.</summary>
-public sealed class FillRequestProcessor(
+public sealed class FillMessageHandler(
     IFillLedgerUnitOfWork unitOfWork,
-    TimeProvider timeProvider) : IFillRequestProcessor
+    TimeProvider timeProvider,
+    FillMessageValidator validator) : ISqsMessageHandler<FillRequestMessage>
 {
-    public async Task<FillProcessingResult> ProcessAsync(
-        Guid requestId,
+    public async Task ProcessAsync(
+        FillRequestMessage message,
+        string? messageGroupId,
         CancellationToken cancellationToken)
     {
-        if (requestId == Guid.Empty)
-        {
-            throw new ArgumentException("A fill request ID must not be empty.", nameof(requestId));
-        }
+        await validator.ValidateAndThrowAsync(message, messageGroupId, cancellationToken);
 
         var transactionStarted = false;
         try
@@ -25,22 +26,17 @@ public sealed class FillRequestProcessor(
             await unitOfWork.BeginAsync(cancellationToken);
             transactionStarted = true;
 
-            var request = await unitOfWork.FindRequestAsync(requestId, cancellationToken)
-                ?? throw new ResourceNotFoundException($"Fill request '{requestId:D}' was not found.");
+            var request = await unitOfWork.FindRequestAsync(message.FillId, cancellationToken)
+                ?? throw new ResourceNotFoundException($"Fill request '{message.FillId:D}' was not found.");
             await unitOfWork.AcquireSymbolLockAsync(request.Symbol, cancellationToken);
 
-            request = await unitOfWork.FindRequestAsync(requestId, cancellationToken)
-                ?? throw new ResourceNotFoundException($"Fill request '{requestId:D}' was not found.");
-            if (request.ProcessedAt is { } originalProcessedAt)
+            request = await unitOfWork.FindRequestAsync(message.FillId, cancellationToken)
+                ?? throw new ResourceNotFoundException($"Fill request '{message.FillId:D}' was not found.");
+            if (request.ProcessedAt is not null)
             {
                 await unitOfWork.CommitAsync(cancellationToken);
                 transactionStarted = false;
-                return new FillProcessingResult(
-                    FillProcessingOutcome.AlreadyProcessed,
-                    request.Symbol,
-                    0,
-                    false,
-                    originalProcessedAt);
+                return;
             }
 
             var orderedRequests = await unitOfWork.GetOrderedRequestsAsync(request.Symbol, cancellationToken);
@@ -49,24 +45,17 @@ public sealed class FillRequestProcessor(
                 .Where(item => item.ProcessedAt is null)
                 .Select(item => item.Id)
                 .ToList();
-            var processedAt = timeProvider.GetUtcNow().ToUniversalTime();
 
             await unitOfWork.ReplaceSymbolLedgerAsync(
                 new Position(request.Symbol, ledger.OpenLots, ledger.RealisedPnl),
                 ledger.RealisedPnlEntries,
                 pendingIds,
-                processedAt,
+                timeProvider.GetUtcNow().ToUniversalTime(),
                 orderedRequests[^1],
                 cancellationToken);
             await unitOfWork.SaveChangesAsync(cancellationToken);
             await unitOfWork.CommitAsync(cancellationToken);
             transactionStarted = false;
-
-            return new FillProcessingResult(
-                FillProcessingOutcome.Applied,
-                request.Symbol,
-                pendingIds.Count,
-                true);
         }
         catch
         {

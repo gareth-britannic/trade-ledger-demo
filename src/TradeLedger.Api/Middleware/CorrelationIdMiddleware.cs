@@ -7,7 +7,6 @@ namespace TradeLedger.Api.Middleware;
 public sealed class CorrelationIdMiddleware(RequestDelegate next)
 {
     public const string HeaderName = "X-Correlation-Id";
-    public const int MaximumLength = CorrelationIdFactory.MaximumLength;
 
     public async Task InvokeAsync(HttpContext context, ICorrelationIdProvider correlationIdProvider)
     {
@@ -33,13 +32,8 @@ public sealed class CorrelationIdMiddleware(RequestDelegate next)
         }
     }
 
-    internal static string GetOrCreateCorrelationId(StringValues values)
+    private static string GetOrCreateCorrelationId(StringValues values)
     {
-        if (values.Count == 1)
-        {
-            return CorrelationIdFactory.NormalizeOrCreate(values[0]);
-        }
-
-        return CorrelationIdFactory.NormalizeOrCreate(null);
+        return CorrelationIdFactory.NormalizeOrCreate(values.Count == 1 ? values[0] : null);
     }
 }
