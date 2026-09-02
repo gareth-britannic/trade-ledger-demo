@@ -31,7 +31,7 @@ public static class DatabaseServiceCollectionExtensions
                 .BuildConnectionString()));
         services.AddScoped<IFillRequestRepository, FillRequestRepository>();
         services.AddScoped<IFillLedgerUnitOfWork, FillLedgerUnitOfWork>();
-        services.AddScoped<ILotRepository, LotRepository>();
+        services.AddScoped<IPositionRepository, PositionRepository>();
         services.AddScoped<IRealisedPnlRepository, RealisedPnlRepository>();
         return services;
     }

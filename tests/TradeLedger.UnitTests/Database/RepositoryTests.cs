@@ -36,7 +36,7 @@ public sealed class RepositoryTests
     }
 
     [Fact]
-    public async Task LotRepository_DerivesOpenLotsAndRealisedPnl_UsingUntrackedModels()
+    public async Task PositionRepository_DerivesOpenLotsAndRealisedPnl_UsingUntrackedModels()
     {
         // Arrange
         await using var context = Context();
@@ -52,7 +52,7 @@ public sealed class RepositoryTests
             Position(OtherSymbol, -2m));
         await context.SaveChangesAsync();
         context.ChangeTracker.Clear();
-        var repository = new LotRepository(context);
+        var repository = new PositionRepository(context);
 
         // Act
         var positions = await repository.GetPositionsAsync(CancellationToken.None);
@@ -65,11 +65,11 @@ public sealed class RepositoryTests
     }
 
     [Fact]
-    public async Task LotRepository_MissingSymbol_ReturnsNull()
+    public async Task PositionRepository_MissingSymbol_ReturnsNull()
     {
         // Arrange
         await using var context = Context();
-        var repository = new LotRepository(context);
+        var repository = new PositionRepository(context);
 
         // Act
         var result = await repository.GetPositionAsync("MISSING", CancellationToken.None);

@@ -7,11 +7,11 @@ using TradeLedger.Domain;
 
 namespace TradeLedger.Application.Services;
 
-public sealed class PositionQueryService(ILotRepository lotRepository) : IPositionQueryService
+public sealed class PositionQueryService(IPositionRepository positionRepository) : IPositionQueryService
 {
     public async Task<IReadOnlyList<PositionResult>> GetPositionsAsync(CancellationToken cancellationToken)
     {
-        var positions = await lotRepository.GetPositionsAsync(cancellationToken);
+        var positions = await positionRepository.GetPositionsAsync(cancellationToken);
         return positions.Select(MapPosition).ToList();
     }
 
@@ -27,7 +27,7 @@ public sealed class PositionQueryService(ILotRepository lotRepository) : IPositi
         }
 
         var normalizedSymbol = SymbolNormalizer.Normalize(symbol);
-        var position = await lotRepository.GetPositionAsync(normalizedSymbol, cancellationToken)
+        var position = await positionRepository.GetPositionAsync(normalizedSymbol, cancellationToken)
             ?? throw new ResourceNotFoundException($"Position '{normalizedSymbol}' was not found.");
 
         return position.OpenLots.Select(lot => new LotResult(

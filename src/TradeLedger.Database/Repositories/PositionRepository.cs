@@ -5,7 +5,7 @@ using TradeLedger.Domain;
 
 namespace TradeLedger.Database.Repositories;
 
-internal sealed class LotRepository(TradeLedgerDbContext dbContext) : ILotRepository
+internal sealed class PositionRepository(TradeLedgerDbContext dbContext) : IPositionRepository
 {
     public async Task<IReadOnlyList<Position>> GetPositionsAsync(CancellationToken cancellationToken)
     {

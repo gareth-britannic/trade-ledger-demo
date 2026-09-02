@@ -2,7 +2,7 @@ using TradeLedger.Domain;
 
 namespace TradeLedger.Application.Interfaces;
 
-public interface ILotRepository
+public interface IPositionRepository
 {
     Task<IReadOnlyList<Position>> GetPositionsAsync(CancellationToken cancellationToken);
 

@@ -15,7 +15,7 @@ public sealed class PositionQueryServiceTests
     [Fact]
     public async Task GetPositions_MapsQuantitiesWeightedCostAndRealisedPnl()
     {
-        var repository = new Mock<ILotRepository>();
+        var repository = new Mock<IPositionRepository>();
         repository.Setup(instance => instance.GetPositionsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([
                 new Position("ACME", [Lot(20m, 10m), Lot(10m, 16m)], 42m)
@@ -30,7 +30,7 @@ public sealed class PositionQueryServiceTests
     [Fact]
     public async Task GetPositions_ClosedPositionDoesNotFabricateAverageCost()
     {
-        var repository = new Mock<ILotRepository>();
+        var repository = new Mock<IPositionRepository>();
         repository.Setup(instance => instance.GetPositionsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([new Position("ACME", [], 42m)]);
         var service = new PositionQueryService(repository.Object);
@@ -45,7 +45,7 @@ public sealed class PositionQueryServiceTests
     {
         using var source = new CancellationTokenSource();
         var lot = Lot(20m, 10m);
-        var repository = new Mock<ILotRepository>();
+        var repository = new Mock<IPositionRepository>();
         repository.Setup(instance => instance.GetPositionAsync("ACME", source.Token))
             .ReturnsAsync(new Position("ACME", [lot], 0m));
         var service = new PositionQueryService(repository.Object);
@@ -59,7 +59,7 @@ public sealed class PositionQueryServiceTests
     [Fact]
     public async Task GetOpenLots_MissingPosition_ThrowsNotFound()
     {
-        var repository = new Mock<ILotRepository>();
+        var repository = new Mock<IPositionRepository>();
         repository.Setup(instance => instance.GetPositionAsync("MISSING", It.IsAny<CancellationToken>()))
             .ReturnsAsync((Position?)null);
         var service = new PositionQueryService(repository.Object);
