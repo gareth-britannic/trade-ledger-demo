@@ -79,7 +79,7 @@ public sealed class RepositoryTests
     }
 
     [Fact]
-    public async Task FillLedgerUnitOfWork_CompletesFillLotsPositionAndRealisedPnlTogether()
+    public async Task FillLedgerUnitOfWork_ReplacesFillLotsPositionAndRealisedPnl()
     {
         // Arrange
         await using var context = Context();
