@@ -10,3 +10,4 @@ artifacts/
 .idea/
 *.sln.DotSettings.user
 .DS_Store
+.generated/

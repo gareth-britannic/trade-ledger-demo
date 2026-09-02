@@ -38,8 +38,8 @@ public static class ServiceCollectionExtensions
     {
         services.AddOptions<CognitoOptions>()
             .Bind(configuration.GetSection(CognitoOptions.SectionName))
-            .Validate(IsHttpsAuthority,
-                $"{CognitoOptions.SectionName}:{nameof(CognitoOptions.Authority)} must be an absolute HTTPS URI.")
+            .Validate(IsAllowedAuthority,
+                $"{CognitoOptions.SectionName}:{nameof(CognitoOptions.Authority)} must be an absolute HTTPS URI or an HTTP loopback URI for local development.")
             .Validate(options => !string.IsNullOrWhiteSpace(options.Audience),
                 $"{CognitoOptions.SectionName}:{nameof(CognitoOptions.Audience)} is required.")
             .ValidateOnStart();
@@ -79,9 +79,16 @@ public static class ServiceCollectionExtensions
         });
     }
 
-    private static bool IsHttpsAuthority(CognitoOptions options) =>
-        Uri.TryCreate(options.Authority, UriKind.Absolute, out var authority) &&
-        authority.Scheme == Uri.UriSchemeHttps;
+    private static bool IsAllowedAuthority(CognitoOptions options)
+    {
+        if (!Uri.TryCreate(options.Authority, UriKind.Absolute, out var authority))
+        {
+            return false;
+        }
+
+        return authority.Scheme == Uri.UriSchemeHttps ||
+               authority.Scheme == Uri.UriSchemeHttp && authority.IsLoopback;
+    }
 
     private static void ConfigureJwtBearer(
         JwtBearerOptions jwtBearer,
@@ -89,15 +96,37 @@ public static class ServiceCollectionExtensions
         IHostEnvironment environment)
     {
         jwtBearer.Authority = cognito.Value.Authority;
-        jwtBearer.Audience = cognito.Value.Audience;
         jwtBearer.RequireHttpsMetadata = !environment.IsDevelopment();
+        jwtBearer.MapInboundClaims = false;
         jwtBearer.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
-            ValidateAudience = true,
+            ValidIssuer = cognito.Value.Authority,
+            ValidateAudience = false,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
+            NameClaimType = "sub",
             ClockSkew = AllowedClockSkew
+        };
+        jwtBearer.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = context =>
+            {
+                var tokenUse = context.Principal?.FindFirst("token_use")?.Value;
+                if (!string.Equals(tokenUse, "access", StringComparison.Ordinal))
+                {
+                    context.Fail("Invalid token_use. Expected an access token.");
+                    return Task.CompletedTask;
+                }
+
+                var clientId = context.Principal?.FindFirst("client_id")?.Value;
+                if (!string.Equals(clientId, cognito.Value.Audience, StringComparison.Ordinal))
+                {
+                    context.Fail("Invalid client_id for the configured Cognito app client.");
+                }
+
+                return Task.CompletedTask;
+            }
         };
     }
 

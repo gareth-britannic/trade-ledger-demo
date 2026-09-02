@@ -11,9 +11,10 @@ for command_name in aws curl docker terraform; do
   fi
 done
 
-echo "Starting LocalStack and Postgres..."
+echo "Starting LocalStack, Postgres, and local Cognito..."
 docker compose -f "${REPO_ROOT}/docker-compose.yml" up -d --wait
 
+"${SCRIPT_DIR}/bootstrap-cognito.sh"
 "${SCRIPT_DIR}/migrate-local-database.sh"
 "${SCRIPT_DIR}/package-processor.sh"
 "${SCRIPT_DIR}/bootstrap-terraform.sh"

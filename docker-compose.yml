@@ -40,8 +40,27 @@ services:
     networks:
       - trade-ledger-local
 
+  cognito-local:
+    image: jagregory/cognito-local:5.3.0
+    ports:
+      - "9229:9229"
+    environment:
+      AWS_REGION: eu-west-2
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:9229/health',response=>process.exit(response.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    volumes:
+      - cognito-data:/app/.cognito
+      - ./infra/local/cognito/config.json:/app/.cognito/config.json
+    networks:
+      - trade-ledger-local
+
 volumes:
   postgres-data:
+  cognito-data:
 
 networks:
   trade-ledger-local:
