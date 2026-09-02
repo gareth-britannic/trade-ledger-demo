@@ -174,7 +174,7 @@ public sealed class LocalStackOrderingTests
         return new LedgerSnapshot(
             fills,
             lots,
-            position?.OpenQuantity,
+            position is null ? null : lots.Sum(lot => lot.RemainingQuantity),
             position?.RealisedPnl);
     }
 

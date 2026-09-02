@@ -15,31 +15,9 @@ internal sealed class PositionEntityConfiguration : IEntityTypeConfiguration<Pos
             .HasColumnName("symbol")
             .HasMaxLength(32)
             .IsRequired();
-        builder.Property(position => position.OpenQuantity)
-            .HasColumnName("open_quantity")
-            .HasPrecision(28, 8)
-            .IsRequired();
         builder.Property(position => position.RealisedPnl)
             .HasColumnName("realised_pnl")
             .HasPrecision(28, 8)
             .IsRequired();
-        builder.Property(position => position.LastAppliedExecutedAt)
-            .HasColumnName("last_applied_executed_at")
-            .HasColumnType("timestamp with time zone")
-            .IsRequired();
-        builder.Property(position => position.LastAppliedFillId)
-            .HasColumnName("last_applied_fill_id")
-            .IsRequired();
-        builder.Property(position => position.UpdatedAt)
-            .HasColumnName("updated_at")
-            .HasColumnType("timestamp with time zone")
-            .IsRequired();
-
-        builder.HasIndex(position => new
-            {
-                position.LastAppliedExecutedAt,
-                position.LastAppliedFillId
-            })
-            .HasDatabaseName("ix_positions_ordering_watermark");
     }
 }

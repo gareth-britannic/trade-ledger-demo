@@ -24,7 +24,6 @@ public interface IFillLedgerUnitOfWork
         IReadOnlyList<RealisedPnlEntry> realisedPnlEntries,
         IReadOnlyCollection<Guid> newlyProcessedFillIds,
         DateTimeOffset processedAt,
-        PendingFillRequest orderingWatermark,
         CancellationToken cancellationToken);
 
     Task SaveChangesAsync(CancellationToken cancellationToken);

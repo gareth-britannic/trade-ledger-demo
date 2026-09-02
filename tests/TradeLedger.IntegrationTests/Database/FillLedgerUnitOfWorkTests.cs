@@ -55,7 +55,6 @@ public sealed class FillLedgerUnitOfWorkTests
                 [realisedPnl],
                 [request.Id],
                 executedAt.AddMinutes(1),
-                request,
                 CancellationToken.None);
             await unitOfWork.SaveChangesAsync(CancellationToken.None);
             await unitOfWork.RollbackAsync(CancellationToken.None);

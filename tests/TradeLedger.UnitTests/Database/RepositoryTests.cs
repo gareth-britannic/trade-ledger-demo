@@ -48,8 +48,8 @@ public sealed class RepositoryTests
             RealisedPnl(Symbol, 7m, September.AddMinutes(1)),
             RealisedPnl(OtherSymbol, -2m, September));
         context.Positions.AddRange(
-            Position(Symbol, 10m, ExpectedRealisedPnl),
-            Position(OtherSymbol, 3m, -2m));
+            Position(Symbol, ExpectedRealisedPnl),
+            Position(OtherSymbol, -2m));
         await context.SaveChangesAsync();
         context.ChangeTracker.Clear();
         var repository = new LotRepository(context);
@@ -100,8 +100,6 @@ public sealed class RepositoryTests
             [realisedPnl],
             [fill.Id],
             processedAt,
-            PendingFillRequest.Create(
-                fill.Id, fill.Symbol, fill.Side, fill.Quantity, fill.Price, fill.ExecutedAt),
             CancellationToken.None);
         await unitOfWork.SaveChangesAsync(CancellationToken.None);
         await unitOfWork.CommitAsync(CancellationToken.None);
@@ -114,9 +112,7 @@ public sealed class RepositoryTests
         persistedPnl.Amount.ShouldBe(realisedPnl.Amount);
         persistedPnl.RealisedAt.ShouldBe(fill.ExecutedAt);
         var persistedPosition = await context.Positions.SingleAsync();
-        persistedPosition.OpenQuantity.ShouldBe(5m);
         persistedPosition.RealisedPnl.ShouldBe(15m);
-        persistedPosition.LastAppliedFillId.ShouldBe(fill.Id);
     }
 
     [Fact]
@@ -174,13 +170,9 @@ public sealed class RepositoryTests
             RealisedAt = realisedAt
         };
 
-    private static PositionEntity Position(string symbol, decimal openQuantity, decimal realisedPnl) => new()
+    private static PositionEntity Position(string symbol, decimal realisedPnl) => new()
     {
         Symbol = symbol,
-        OpenQuantity = openQuantity,
-        RealisedPnl = realisedPnl,
-        LastAppliedExecutedAt = September,
-        LastAppliedFillId = Guid.NewGuid(),
-        UpdatedAt = September
+        RealisedPnl = realisedPnl
     };
 }

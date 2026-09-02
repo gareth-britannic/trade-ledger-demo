@@ -46,15 +46,10 @@ internal static class ApiTestData
             });
         }
 
-        var latestLot = lots.OrderBy(lot => lot.OpenedAt).ThenBy(lot => lot.Id).Last();
         context.Positions.Add(new PositionEntity
         {
             Symbol = symbol,
-            OpenQuantity = lots.Sum(lot => lot.RemainingQuantity),
-            RealisedPnl = realisedPnl,
-            LastAppliedExecutedAt = latestLot.OpenedAt,
-            LastAppliedFillId = latestLot.Id,
-            UpdatedAt = latestLot.OpenedAt
+            RealisedPnl = realisedPnl
         });
         await context.SaveChangesAsync();
     }

@@ -56,11 +56,6 @@ public sealed class PersistenceModelTests
         var position = context.Model.FindEntityType(typeof(PositionEntity)).ShouldNotBeNull();
         position.FindPrimaryKey().ShouldNotBeNull().Properties.Single().Name
             .ShouldBe(nameof(PositionEntity.Symbol));
-        position.FindProperty(nameof(PositionEntity.LastAppliedExecutedAt)).ShouldNotBeNull()
-            .GetColumnType().ShouldBe("timestamp with time zone");
-        position.FindProperty(nameof(PositionEntity.UpdatedAt)).ShouldNotBeNull()
-            .GetColumnType().ShouldBe("timestamp with time zone");
-        AssertDecimal(position, nameof(PositionEntity.OpenQuantity));
         AssertDecimal(position, nameof(PositionEntity.RealisedPnl));
     }
 

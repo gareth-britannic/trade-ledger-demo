@@ -66,13 +66,11 @@ internal sealed class FillLedgerUnitOfWork(TradeLedgerDbContext dbContext) : IFi
         IReadOnlyList<RealisedPnlEntry> realisedPnlEntries,
         IReadOnlyCollection<Guid> newlyProcessedFillIds,
         DateTimeOffset processedAt,
-        PendingFillRequest orderingWatermark,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(position);
         ArgumentNullException.ThrowIfNull(realisedPnlEntries);
         ArgumentNullException.ThrowIfNull(newlyProcessedFillIds);
-        ArgumentNullException.ThrowIfNull(orderingWatermark);
 
         var existingLots = await dbContext.Lots
             .Where(lot => lot.Symbol == position.Symbol)
@@ -93,11 +91,7 @@ internal sealed class FillLedgerUnitOfWork(TradeLedgerDbContext dbContext) : IFi
             dbContext.Positions.Add(positionEntity);
         }
 
-        positionEntity.OpenQuantity = position.OpenLots.Sum(lot => lot.RemainingQuantity);
         positionEntity.RealisedPnl = position.RealisedPnl;
-        positionEntity.LastAppliedExecutedAt = orderingWatermark.ExecutedAt.ToUniversalTime();
-        positionEntity.LastAppliedFillId = orderingWatermark.Id;
-        positionEntity.UpdatedAt = processedAt.ToUniversalTime();
 
         if (newlyProcessedFillIds.Count > 0)
         {

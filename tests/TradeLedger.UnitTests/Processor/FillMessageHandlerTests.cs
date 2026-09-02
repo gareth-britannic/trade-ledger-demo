@@ -66,7 +66,6 @@ public sealed class FillMessageHandlerTests
 
         unitOfWork.Position.ShouldNotBeNull().OpenLots.Select(lot => lot.Id)
             .ShouldBe([first.Id, second.Id]);
-        unitOfWork.Watermark.ShouldBe(Request(second));
     }
 
     [Fact]
@@ -183,7 +182,6 @@ public sealed class FillMessageHandlerTests
         public IReadOnlyList<RealisedPnlEntry> RealisedPnlEntries { get; private set; } = [];
         public IReadOnlyCollection<Guid> NewlyProcessedIds { get; private set; } = [];
         public DateTimeOffset ProcessedAt { get; private set; }
-        public PendingFillRequest? Watermark { get; private set; }
         public bool Begun { get; private set; }
         public bool Saved { get; private set; }
         public bool Committed { get; private set; }
@@ -221,14 +219,12 @@ public sealed class FillMessageHandlerTests
             IReadOnlyList<RealisedPnlEntry> realisedPnlEntries,
             IReadOnlyCollection<Guid> newlyProcessedFillIds,
             DateTimeOffset processedAt,
-            PendingFillRequest orderingWatermark,
             CancellationToken cancellationToken)
         {
             Position = position;
             RealisedPnlEntries = realisedPnlEntries;
             NewlyProcessedIds = newlyProcessedFillIds;
             ProcessedAt = processedAt;
-            Watermark = orderingWatermark;
             return Task.CompletedTask;
         }
 

@@ -68,7 +68,6 @@ public sealed class FillMessageHandler(
                 ledger.RealisedPnlEntries,
                 pendingIds,
                 timeProvider.GetUtcNow().ToUniversalTime(),
-                orderedRequests[^1],
                 cancellationToken);
             await unitOfWork.SaveChangesAsync(cancellationToken);
             await unitOfWork.CommitAsync(cancellationToken);
