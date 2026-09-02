@@ -72,7 +72,7 @@ internal sealed class IntegrationTimeProvider(DateTimeOffset utcNow) : TimeProvi
 
 public sealed class CapturingSqsClient : ISqsClient
 {
-    public List<FillRequestMessage> Published { get; } = [];
+    public List<SentFillRequest> Sent { get; } = [];
 
     public Task SendAsync<TMessage>(
         TMessage message,
@@ -83,12 +83,17 @@ public sealed class CapturingSqsClient : ISqsClient
     {
         if (message is FillRequestMessage fillRequest)
         {
-            Published.Add(fillRequest);
+            Sent.Add(new SentFillRequest(fillRequest, messageGroupId, deduplicationId));
         }
 
         return Task.CompletedTask;
     }
 }
+
+public sealed record SentFillRequest(
+    FillRequestMessage Message,
+    string MessageGroupId,
+    string DeduplicationId);
 
 internal sealed class TestAuthenticationHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
