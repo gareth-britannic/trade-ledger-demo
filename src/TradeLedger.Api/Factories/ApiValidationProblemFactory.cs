@@ -13,19 +13,11 @@ internal static class ApiValidationProblemFactory
 
     public static IActionResult CreateResponse(ActionContext context)
     {
-        var problem = new ValidationProblemDetails(GetErrors(context))
-        {
-            Status = StatusCodes.Status400BadRequest,
-            Title = ValidationTitle,
-            Type = ProblemTypes.Validation,
-            Instance = context.HttpContext.Request.Path,
-            Extensions =
-            {
-                [ProblemDetailsMetadata.CorrelationIdExtension] = context.HttpContext.RequestServices
-                    .GetRequiredService<ICorrelationIdProvider>()
-                    .CorrelationId
-            }
-        };
+        var problem = CreateProblem(GetErrors(context));
+        problem.Instance = context.HttpContext.Request.Path;
+        problem.Extensions[ProblemDetailsMetadata.CorrelationIdExtension] = context.HttpContext.RequestServices
+            .GetRequiredService<ICorrelationIdProvider>()
+            .CorrelationId;
 
         return new ContentResult
         {
@@ -33,6 +25,18 @@ internal static class ApiValidationProblemFactory
             ContentType = ApiMediaTypes.ProblemJson,
             Content = JsonSerializer.Serialize(problem, SerializerOptions)
         };
+    }
+
+    public static ProblemDetails CreateProblem(IDictionary<string, string[]> errors)
+    {
+        var problem = new ProblemDetails
+        {
+            Status = StatusCodes.Status400BadRequest,
+            Title = ValidationTitle,
+            Type = ProblemTypes.Validation
+        };
+        problem.Extensions["errors"] = errors;
+        return problem;
     }
 
     private static Dictionary<string, string[]> GetErrors(ActionContext context) => context.ModelState

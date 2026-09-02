@@ -1,6 +1,7 @@
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using TradeLedger.Api.Constants;
+using TradeLedger.Api.Factories;
 using TradeLedger.Application.Exceptions;
 using TradeLedger.Common;
 
@@ -64,19 +65,7 @@ public sealed class ExceptionHandlingMiddleware(
         var errors = exception.Errors
             .GroupBy(error => error.PropertyName)
             .ToDictionary(group => group.Key, group => group.Select(error => error.ErrorMessage).ToArray());
-        return ValidationProblem(errors);
-    }
-
-    private static ProblemDetails ValidationProblem(IReadOnlyDictionary<string, string[]> errors)
-    {
-        var problem = new ProblemDetails
-        {
-            Status = StatusCodes.Status400BadRequest,
-            Title = "One or more validation errors occurred.",
-            Type = ProblemTypes.Validation
-        };
-        problem.Extensions["errors"] = errors;
-        return problem;
+        return ApiValidationProblemFactory.CreateProblem(errors);
     }
 
     private ProblemDetails UnexpectedProblem() => new()
