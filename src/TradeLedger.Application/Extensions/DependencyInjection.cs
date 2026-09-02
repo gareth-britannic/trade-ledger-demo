@@ -14,6 +14,7 @@ public static class DependencyInjection
         services.AddValidatorsFromAssemblyContaining<CreateFillCommandValidator>();
         services.AddScoped<IFillRequestService, FillRequestService>();
         services.AddScoped<IPositionQueryService, PositionQueryService>();
+        services.AddScoped<ILlmClient, InMemoryLlmClient>();
         services.AddScoped<IExplainService, ExplainService>();
         return services;
     }
