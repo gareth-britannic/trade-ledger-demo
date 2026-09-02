@@ -80,6 +80,39 @@ public sealed class ExplainServiceTests
         realisedPnl.VerifyNoOtherCalls();
     }
 
+    [Fact]
+    public async Task Explain_AllTimeQuestionWithNoOpenLots_ReturnsTotalAndNoLotsAnswer()
+    {
+        using var source = new CancellationTokenSource();
+        var positions = new Mock<IPositionQueryService>();
+        positions.Setup(instance => instance.GetPositionsAsync(source.Token))
+            .ReturnsAsync([new PositionResult(Symbol, 0m, null, -25m)]);
+        positions.Setup(instance => instance.GetOpenLotsAsync(Symbol, source.Token))
+            .ReturnsAsync([]);
+        var realisedPnl = new Mock<IRealisedPnlRepository>();
+        realisedPnl.Setup(instance => instance.GetTotalAsync(
+                Symbol,
+                null,
+                null,
+                source.Token))
+            .ReturnsAsync(-25m);
+        var service = CreateService(positions, realisedPnl);
+
+        var result = await service.ExplainAsync(
+            new ExplainQuery("What's my realised P&L on AAPL?"),
+            source.Token);
+
+        result.ToolCalls.ShouldBe([
+            GetPositionsTool,
+            "get_realised_pnl(\"AAPL\", \"all\")",
+            GetLotsTool
+        ]);
+        result.Answer.ShouldBe(
+            "Your realised P&L on AAPL in total is -£25.00. There are no open lots.");
+        positions.VerifyAll();
+        realisedPnl.VerifyAll();
+    }
+
     private static ExplainService CreateService(
         Mock<IPositionQueryService> positions,
         Mock<IRealisedPnlRepository> realisedPnl) => new(

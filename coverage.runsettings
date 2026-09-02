@@ -25,6 +25,11 @@
                 <Attribute>^System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute$</Attribute>
               </Exclude>
             </Attributes>
+            <Functions>
+              <Exclude>
+                <Function>.*\.set_.*</Function>
+              </Exclude>
+            </Functions>
           </CodeCoverage>
         </Configuration>
       </DataCollector>
