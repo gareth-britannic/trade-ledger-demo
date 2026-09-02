@@ -5,11 +5,12 @@ using TradeLedger.Database;
 using TradeLedger.Database.Entities;
 using TradeLedger.Database.Repositories;
 using TradeLedger.Domain;
-using TradeLedger.IntegrationTests.Processor;
+using TradeLedger.IntegrationTests.Support;
 using Xunit;
 
 namespace TradeLedger.IntegrationTests.Database;
 
+[Collection(LocalStackCollection.Name)]
 public sealed class FillLedgerUnitOfWorkTests
 {
     private const string ConnectionString =

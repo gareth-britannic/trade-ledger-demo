@@ -15,10 +15,12 @@ using TradeLedger.Application.Records;
 using TradeLedger.Common;
 using TradeLedger.Database;
 using TradeLedger.Domain;
+using TradeLedger.IntegrationTests.Support;
 using Xunit;
 
 namespace TradeLedger.IntegrationTests.Processor;
 
+[Collection(LocalStackCollection.Name)]
 public sealed class LocalStackOrderingTests
 {
     private const string LocalStackEndpoint = "http://localhost:4566";
@@ -239,18 +241,4 @@ public sealed class LocalStackOrderingTests
         IReadOnlyList<PersistedLot> Lots,
         decimal? OpenQuantity,
         decimal? RealisedPnl);
-}
-
-public sealed class LocalStackFactAttribute : FactAttribute
-{
-    public LocalStackFactAttribute()
-    {
-        if (!string.Equals(
-                Environment.GetEnvironmentVariable("TRADE_LEDGER_RUN_LOCALSTACK_INTEGRATION"),
-                "1",
-                StringComparison.Ordinal))
-        {
-            Skip = "Run deploy/scripts/bootstrap-all.sh and set TRADE_LEDGER_RUN_LOCALSTACK_INTEGRATION=1.";
-        }
-    }
 }

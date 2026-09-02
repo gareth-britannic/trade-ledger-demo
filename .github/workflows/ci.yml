@@ -146,7 +146,7 @@ jobs:
         run: terraform -chdir=${{ matrix.directory }} test
 
   integrate:
-    name: FIFO ordering and idempotency integration
+    name: End-to-end and FIFO integration
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     env:
@@ -171,7 +171,7 @@ jobs:
           dotnet tool restore
       - name: Start Postgres and LocalStack and deploy the processor
         run: ./deploy/scripts/bootstrap-all.sh
-      - name: Run FIFO ordering and idempotency integration test
+      - name: Run end-to-end and FIFO integration tests
         run: >-
           dotnet test tests/TradeLedger.IntegrationTests/TradeLedger.IntegrationTests.csproj
           --configuration Release
