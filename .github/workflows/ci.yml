@@ -27,6 +27,8 @@ jobs:
           dotnet-version: "10.0.400"
       - name: Restore
         run: dotnet restore TradeLedger.sln
+      - name: Restore local tools
+        run: dotnet tool restore
       - name: Build
         run: dotnet build TradeLedger.sln --configuration Release --no-restore
       - name: Test with coverage
@@ -37,11 +39,17 @@ jobs:
           --collect:"Code Coverage"
           --settings coverage.runsettings
           --results-directory TestResults
+      - name: Merge coverage reports
+        run: >-
+          dotnet reportgenerator
+          "-reports:TestResults/**/*.cobertura.xml"
+          "-targetdir:TestResults/Merged"
+          "-reporttypes:Cobertura"
       - name: Enforce coverage thresholds
         shell: bash
         run: |
-          coverage_file="$(find TestResults -name '*.cobertura.xml' -print -quit)"
-          if [[ -z "$coverage_file" ]]; then
+          coverage_file="TestResults/Merged/Cobertura.xml"
+          if [[ ! -f "$coverage_file" ]]; then
             echo "Coverage report was not generated."
             exit 1
           fi
@@ -75,7 +83,9 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: code-coverage
-          path: TestResults/**/*.cobertura.xml
+          path: |
+            TestResults/**/*.cobertura.xml
+            TestResults/Merged/Cobertura.xml
           if-no-files-found: error
 
   lint:
@@ -137,7 +147,7 @@ jobs:
 
   integrate:
     name: FIFO ordering and idempotency integration
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     env:
       AWS_ACCESS_KEY_ID: test
@@ -155,9 +165,6 @@ jobs:
       - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.13.5
-      - uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
       - name: Restore .NET dependencies and tools
         run: |
           dotnet restore TradeLedger.sln

@@ -8,7 +8,8 @@
           <CodeCoverage>
             <ModulePaths>
               <Include>
-                <ModulePath>.*TradeLedger\.(Api|Application|Infrastructure)\.dll$</ModulePath>
+                <ModulePath>.*TradeLedger\.(Api|Application|Common|Database|Domain|Processor)\.dll$</ModulePath>
+                <ModulePath>.*bootstrap\.dll$</ModulePath>
               </Include>
             </ModulePaths>
             <Sources>

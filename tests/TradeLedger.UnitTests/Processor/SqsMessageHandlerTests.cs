@@ -118,6 +118,54 @@ public sealed class SqsMessageHandlerTests
         harness.Calls.ShouldBeEmpty();
     }
 
+    [Theory]
+    [InlineData(500)]
+    [InlineData(2000)]
+    public async Task LambdaRemainingTime_ConfiguresInvocationTimeout(int remainingMilliseconds)
+    {
+        var harness = new Harness();
+
+        var response = await harness.Handler.HandleAsync(
+            Event(Message("one", "ACME", Guid.NewGuid(), "correlation")),
+            Context(TimeSpan.FromMilliseconds(remainingMilliseconds)));
+
+        response.BatchItemFailures.ShouldBeEmpty();
+        harness.Calls.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task EmptyBatch_ReturnsNoFailures()
+    {
+        var harness = new Harness();
+
+        var response = await harness.Handler.HandleAsync(
+            new SQSEvent { Records = null! },
+            Context(),
+            CancellationToken.None);
+
+        response.BatchItemFailures.ShouldBeEmpty();
+        harness.Calls.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task MissingRecordIdentifiersAndAttributes_AreHandledSafely()
+    {
+        var first = Message(string.Empty, "ACME", Guid.NewGuid(), null);
+        first.Attributes = null;
+        first.MessageAttributes = null;
+        var second = Message("two", "BETA", Guid.NewGuid(), null);
+        second.Attributes = [];
+        var harness = new Harness();
+
+        var response = await harness.Handler.HandleAsync(
+            Event(first, second),
+            Context(),
+            CancellationToken.None);
+
+        response.BatchItemFailures.ShouldBeEmpty();
+        harness.Calls.Count.ShouldBe(2);
+    }
+
     private static SQSEvent Event(params SQSEvent.SQSMessage[] records) => new() { Records = [..records] };
 
     private static SQSEvent.SQSMessage Message(
@@ -146,11 +194,11 @@ public sealed class SqsMessageHandlerTests
         };
     }
 
-    private static ILambdaContext Context()
+    private static ILambdaContext Context(TimeSpan? remainingTime = null)
     {
         var context = new Mock<ILambdaContext>();
         context.SetupGet(instance => instance.AwsRequestId).Returns("lambda-request");
-        context.SetupGet(instance => instance.RemainingTime).Returns(TimeSpan.FromMinutes(1));
+        context.SetupGet(instance => instance.RemainingTime).Returns(remainingTime ?? TimeSpan.FromMinutes(1));
         return context.Object;
     }
 
