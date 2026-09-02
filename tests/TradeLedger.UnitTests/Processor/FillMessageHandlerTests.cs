@@ -85,6 +85,23 @@ public sealed class FillMessageHandlerTests
     }
 
     [Fact]
+    public async Task ExistingRequest_WhenMessageDoesNotMatch_RollsBack()
+    {
+        var persisted = Fill.Create(Guid.NewGuid(), Symbol, Side.Buy, 10m, 12m, Now);
+        var differentMessage = Fill.Create(persisted.Id, Symbol, Side.Buy, 11m, 12m, Now);
+        var unitOfWork = new FakeUnitOfWork([Request(persisted)]);
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(() =>
+            Service(unitOfWork).ProcessAsync(Message(differentMessage), Symbol, CancellationToken.None));
+
+        exception.Message.ShouldBe(
+            $"Fill request '{persisted.Id:D}' does not match the persisted request.");
+        unitOfWork.RolledBack.ShouldBeTrue();
+        unitOfWork.Saved.ShouldBeFalse();
+        unitOfWork.Committed.ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task InvalidMessageGroup_IsRejectedBeforeStartingTransaction()
     {
         var fill = Fill.Create(Guid.NewGuid(), Symbol, Side.Buy, 10m, 12m, Now);

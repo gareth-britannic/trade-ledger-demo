@@ -26,23 +26,26 @@ public sealed class FillMessageHandler(
             await unitOfWork.BeginAsync(cancellationToken);
             transactionStarted = true;
 
+            var messageRequest = PendingFillRequest.Create(
+                message.FillId,
+                message.Symbol,
+                Enum.Parse<Side>(message.Side, true),
+                message.Quantity,
+                message.Price,
+                message.ExecutedAt);
             var request = await unitOfWork.FindRequestAsync(message.FillId, cancellationToken)
-                ?? PendingFillRequest.Create(
-                    message.FillId,
-                    message.Symbol,
-                    Enum.Parse<Side>(message.Side, true),
-                    message.Quantity,
-                    message.Price,
-                    message.ExecutedAt);
+                ?? messageRequest;
             await unitOfWork.AcquireSymbolLockAsync(request.Symbol, cancellationToken);
 
             var persistedRequest = await unitOfWork.FindRequestAsync(message.FillId, cancellationToken);
             if (persistedRequest is null)
             {
-                await requestRepository.AddAsync(request, cancellationToken);
+                await requestRepository.AddAsync(messageRequest, cancellationToken);
+                request = messageRequest;
             }
             else
             {
+                EnsureMessageMatches(persistedRequest, messageRequest);
                 request = persistedRequest;
             }
 
@@ -79,6 +82,17 @@ public sealed class FillMessageHandler(
             }
 
             throw;
+        }
+    }
+
+    private static void EnsureMessageMatches(
+        PendingFillRequest persistedRequest,
+        PendingFillRequest messageRequest)
+    {
+        if (persistedRequest with { ProcessedAt = null } != messageRequest)
+        {
+            throw new InvalidOperationException(
+                $"Fill request '{messageRequest.Id:D}' does not match the persisted request.");
         }
     }
 }
