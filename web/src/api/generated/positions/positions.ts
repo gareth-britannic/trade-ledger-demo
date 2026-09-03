@@ -353,9 +353,3 @@ export function useGetPositionLots<TData = Awaited<ReturnType<typeof getPosition
 
   return withQueryKey(query, queryOptions.queryKey);
 }
-
-
-
-
-
-
