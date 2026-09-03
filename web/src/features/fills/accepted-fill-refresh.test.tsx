@@ -92,4 +92,25 @@ describe('observeAcceptedFill', () => {
     await expect(observation).resolves.toBe('timed-out')
     expect(fetchQuery).toHaveBeenCalledTimes(acceptedFillPollAttempts)
   })
+
+  it('stops polling promptly when its caller aborts during the wait', async () => {
+    vi.useFakeTimers()
+    const baselineResponse = responseFor([applePosition])
+    const { fetchQuery, queryClient } = pollingClient(() =>
+      Promise.resolve(baselineResponse),
+    )
+    const controller = new AbortController()
+    const observation = observeAcceptedFill(
+      queryClient,
+      'AAPL',
+      positionFingerprint(baselineResponse, 'AAPL'),
+      controller.signal,
+    )
+
+    await vi.advanceTimersByTimeAsync(0)
+    controller.abort()
+
+    await expect(observation).rejects.toMatchObject({ name: 'AbortError' })
+    expect(fetchQuery).toHaveBeenCalledOnce()
+  })
 })

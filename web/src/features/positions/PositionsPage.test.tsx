@@ -201,4 +201,47 @@ describe('Lots drawer through PositionsPage', () => {
     expect(await within(drawer).findByRole('heading', { name: 'Position not found' })).toBeInTheDocument()
     expect(within(drawer).queryByText('Open lots unavailable')).not.toBeInTheDocument()
   })
+
+  it('shows an explicit empty-lots state for a fully closed position', async () => {
+    const user = userEvent.setup()
+    usePositions()
+    server.use(http.get('/api/positions/AAPL/lots', () => HttpResponse.json([])))
+    renderWithQueryClient(<PositionsPage />)
+
+    const trigger = (await screen.findAllByRole('button', { name: 'View lots →' }))[0]
+    if (!trigger) throw new Error('Expected the first View lots button.')
+    await user.click(trigger)
+
+    const drawer = await screen.findByRole('dialog', { name: 'AAPL — Open lots' })
+    expect(await within(drawer).findByRole('heading', { name: 'No open lots' })).toBeVisible()
+    expect(within(drawer).getByText(/fully closed/i)).toBeVisible()
+  })
+
+  it('shows a generic lots failure with correlation ID and recovers on retry', async () => {
+    const user = userEvent.setup()
+    let lotsRequests = 0
+    usePositions()
+    server.use(
+      http.get('/api/positions/AAPL/lots', () => {
+        lotsRequests += 1
+        return lotsRequests === 1
+          ? HttpResponse.json(problemDetailsFixture, { status: 500 })
+          : HttpResponse.json(appleLotsFixture)
+      }),
+    )
+    renderWithQueryClient(<PositionsPage />)
+
+    const trigger = (await screen.findAllByRole('button', { name: 'View lots →' }))[0]
+    if (!trigger) throw new Error('Expected the first View lots button.')
+    await user.click(trigger)
+
+    const drawer = await screen.findByRole('dialog', { name: 'AAPL — Open lots' })
+    const error = await within(drawer).findByRole('alert')
+    expect(error).toHaveTextContent('The positions store could not be reached.')
+    expect(error).toHaveTextContent('Correlation ID: corr-positions-42')
+
+    await user.click(within(error).getByRole('button', { name: 'Try again' }))
+    expect(await within(drawer).findByRole('table')).toBeVisible()
+    expect(lotsRequests).toBe(2)
+  })
 })

@@ -6,6 +6,7 @@ import {
   getAuthSession,
   registerUnauthorizedHandler,
 } from '../../features/auth/session-bridge'
+import { createAppQueryClient } from '../../app/providers/query-client'
 import { ApiError, apiFetch } from './api-fetch'
 
 interface TestEnvelope<T> {
@@ -138,6 +139,38 @@ describe('apiFetch', () => {
     expect((error as Error).message).not.toContain('sensitive transport detail')
   })
 
+  it('preserves request cancellation instead of reporting the API as unavailable', async () => {
+    const cancellation = new DOMException('The request was cancelled.', 'AbortError')
+    vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(cancellation)))
+
+    await expect(apiFetch('/api/positions', { method: 'GET' })).rejects.toBe(cancellation)
+  })
+
+  it('falls back safely when an error response claims JSON but contains malformed text', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Promise.resolve(
+          new Response('{not-json', {
+            status: 502,
+            statusText: 'Bad Gateway',
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        ),
+      ),
+    )
+
+    const error = await apiFetch('/api/positions', { method: 'GET' }).catch(
+      (caught: unknown) => caught,
+    )
+
+    expect(error).toMatchObject({
+      status: 502,
+      title: 'Bad Gateway',
+      body: '{not-json',
+    })
+  })
+
   it('rejects absolute URLs before a bearer token can be sent cross-origin', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
@@ -147,5 +180,23 @@ describe('apiFetch', () => {
       title: 'Invalid API request',
     })
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('app query client policy', () => {
+  it('does not retry client errors or mutations, but retries transient query failures twice', () => {
+    const queryClient = createAppQueryClient()
+    const defaults = queryClient.getDefaultOptions()
+    const retry = defaults.queries?.retry
+
+    expect(defaults.queries?.refetchOnWindowFocus).toBe(true)
+    expect(defaults.mutations?.retry).toBe(false)
+    expect(retry).toBeTypeOf('function')
+    if (typeof retry !== 'function') throw new Error('Expected a query retry function.')
+
+    expect(retry(0, new ApiError({ status: 400, title: 'Bad request' }))).toBe(false)
+    expect(retry(0, new ApiError({ status: 503, title: 'Unavailable' }))).toBe(true)
+    expect(retry(1, new Error('transient'))).toBe(true)
+    expect(retry(2, new Error('still failing'))).toBe(false)
   })
 })

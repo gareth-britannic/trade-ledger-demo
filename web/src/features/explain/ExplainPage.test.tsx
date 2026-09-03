@@ -119,4 +119,41 @@ describe('ExplainPage', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('The ledger query could not be completed.')
     expect(screen.getByRole('alert')).toHaveTextContent('Correlation ID: corr-explain-42')
   })
+
+  it('shows a safe unexpected-error message and clears it when the question changes', () => {
+    useExplainLedgerMock.mockReturnValue(
+      idleMutation({
+        error: new Error('internal provider detail'),
+        isError: true,
+      }),
+    )
+
+    render(<ExplainPage />)
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'An unexpected error occurred. Try asking again.',
+    )
+    fireEvent.change(screen.getByRole('textbox', { name: 'Question about the ledger' }), {
+      target: { value: 'What are my positions?' },
+    })
+    expect(reset).toHaveBeenCalledOnce()
+  })
+
+  it('makes an empty successful response explicit instead of rendering blank sections', () => {
+    useExplainLedgerMock.mockReturnValue(
+      idleMutation({
+        data: {
+          data: { answer: '   ', toolCalls: [] } satisfies ExplainResponse,
+          headers: new Headers(),
+          status: 200,
+        },
+        isSuccess: true,
+      }),
+    )
+
+    render(<ExplainPage />)
+
+    expect(screen.getByText('No tool calls were reported for this answer.')).toBeVisible()
+    expect(screen.getByText('The API returned no explanation for this question.')).toBeVisible()
+  })
 })
