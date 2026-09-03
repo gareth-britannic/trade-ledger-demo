@@ -8,12 +8,16 @@ export interface AuthRouteProps {
 }
 
 export function RequireAuth({ children }: AuthRouteProps) {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, sessionEndReason } = useAuth()
   const location = useLocation()
 
   if (!isAuthenticated) {
     const returnTo = `${location.pathname}${location.search}${location.hash}`
-    return <Navigate to="/sign-in" replace state={{ returnTo }} />
+    const reason =
+      sessionEndReason === 'expired' || sessionEndReason === 'unauthorized'
+        ? sessionEndReason
+        : undefined
+    return <Navigate to="/sign-in" replace state={{ returnTo, reason }} />
   }
 
   return children

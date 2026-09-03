@@ -10,6 +10,7 @@ import {
   registerUnauthorizedHandler,
   subscribeToAuthSession,
   type AuthSession,
+  type AuthSessionEndReason,
 } from './session-bridge'
 
 export interface AuthProviderProps {
@@ -22,11 +23,13 @@ const defaultClient = new CognitoAuthClient()
 export function AuthProvider({ children, client = defaultClient }: AuthProviderProps) {
   const navigate = useNavigate()
   const [session, setSession] = useState<AuthSession | null>(() => getAuthSession())
+  const [sessionEndReason, setSessionEndReason] = useState<AuthSessionEndReason | null>(null)
 
   useEffect(
     () =>
       subscribeToAuthSession((nextSession, reason) => {
         setSession(nextSession)
+        setSessionEndReason(reason ?? null)
         if (reason === 'expired') {
           void navigate('/sign-in', { replace: true, state: { reason: 'expired' } })
         }
@@ -80,10 +83,11 @@ export function AuthProvider({ children, client = defaultClient }: AuthProviderP
       status: session ? 'authenticated' : 'anonymous',
       isAuthenticated: session !== null,
       email: session?.email ?? null,
+      sessionEndReason,
       signIn,
       signOut,
     }),
-    [session, signIn, signOut],
+    [session, sessionEndReason, signIn, signOut],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

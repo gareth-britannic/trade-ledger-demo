@@ -172,4 +172,67 @@ describe('CognitoAuthClient', () => {
       client.signIn({ email: 'demo@trade-ledger.local', password: 'password' }),
     ).rejects.toMatchObject({ code: 'unavailable' })
   })
+
+  it.each([
+    'InvalidParameterException',
+    'PasswordResetRequiredException',
+    'ResourceNotFoundException',
+    'UserNotConfirmedException',
+  ])('normalizes %s as a local configuration problem', async (name) => {
+    const send = vi.fn<SendCommand>()
+    send.mockRejectedValue(Object.assign(new Error('provider detail'), { name }))
+    const client = new CognitoAuthClient({
+      clientId: 'public-client-id',
+      region: 'eu-west-2',
+      sender: { send },
+    })
+
+    await expect(
+      client.signIn({ email: 'demo@trade-ledger.local', password: 'password' }),
+    ).rejects.toMatchObject({ code: 'misconfigured' })
+  })
+
+  it('rejects a missing access token and an already-expired access token', async () => {
+    const send = vi.fn<SendCommand>()
+    const client = new CognitoAuthClient({
+      clientId: 'public-client-id',
+      region: 'eu-west-2',
+      sender: { send },
+      now: () => 1_900_000_000_000,
+    })
+
+    send.mockResolvedValueOnce({ $metadata: {}, AuthenticationResult: {} })
+    await expect(
+      client.signIn({ email: 'demo@trade-ledger.local', password: 'password' }),
+    ).rejects.toMatchObject({ code: 'invalid-response' })
+
+    send.mockResolvedValueOnce(
+      output(jwt({ token_use: 'access', client_id: 'public-client-id', exp: 1_800_000_000 })),
+    )
+    await expect(
+      client.signIn({ email: 'demo@trade-ledger.local', password: 'password' }),
+    ).rejects.toMatchObject({
+      code: 'invalid-response',
+      message: 'The sign-in service returned an expired access token.',
+    })
+  })
+
+  it('passes an already-aborted request through without replacing its error', async () => {
+    const cancellation = new DOMException('Cancelled by the caller.', 'AbortError')
+    const send = vi.fn<SendCommand>().mockRejectedValue(cancellation)
+    const client = new CognitoAuthClient({
+      clientId: 'public-client-id',
+      region: 'eu-west-2',
+      sender: { send },
+    })
+    const controller = new AbortController()
+    controller.abort()
+
+    await expect(
+      client.signIn(
+        { email: 'demo@trade-ledger.local', password: 'password' },
+        controller.signal,
+      ),
+    ).rejects.toBe(cancellation)
+  })
 })

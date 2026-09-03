@@ -205,4 +205,37 @@ describe('AddFillDialog', () => {
       queryClient.getQueryData<getPositionsResponse>(getGetPositionsQueryKey()),
     ).toMatchObject({ data: [{ symbol: 'AAPL' }] })
   })
+
+  it('reports when the bounded refresh observes the accepted position change', async () => {
+    const user = userEvent.setup()
+    let positionRequests = 0
+    server.use(
+      http.post('/api/fills', () => HttpResponse.json(acceptedFillFixture, { status: 202 })),
+      http.get('/api/positions', () => {
+        positionRequests += 1
+        return HttpResponse.json(
+          positionRequests === 1
+            ? []
+            : [
+                {
+                  symbol: 'AAPL',
+                  openQuantity: 10.125,
+                  averageUnitCost: 191.4,
+                  realisedPnl: 0,
+                },
+              ],
+        )
+      }),
+    )
+
+    renderWithQueryClient(<AddFillDialog onOpenChange={vi.fn()} open />)
+    await completeFillForm(user)
+    await user.click(screen.getByRole('button', { name: 'Submit fill' }))
+
+    const observed = await screen.findByText('Position update observed')
+    expect(observed.closest('[role="status"]')).toHaveTextContent(
+      'The positions API now reflects a change for AAPL.',
+    )
+    expect(positionRequests).toBe(2)
+  })
 })
