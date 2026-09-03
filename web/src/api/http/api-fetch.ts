@@ -1,4 +1,7 @@
-import { endAuthSession, getAccessToken } from '../../features/auth/session-bridge'
+import {
+  endAuthSessionIfCurrent,
+  getAuthSession,
+} from '../../features/auth/session-bridge'
 
 export type ApiFieldErrors = Record<string, string[]>
 
@@ -136,9 +139,9 @@ export const apiFetch = async <T>(url: string, options: RequestInit): Promise<T>
   const headers = new Headers(options.headers)
   headers.set('Accept', 'application/json, application/problem+json')
 
-  const accessToken = getAccessToken()
-  if (requestUrl.startsWith('/api/') && accessToken) {
-    headers.set('Authorization', `Bearer ${accessToken}`)
+  const requestSession = requestUrl.startsWith('/api/') ? getAuthSession() : null
+  if (requestSession) {
+    headers.set('Authorization', `Bearer ${requestSession.accessToken}`)
   } else {
     headers.delete('Authorization')
   }
@@ -160,7 +163,9 @@ export const apiFetch = async <T>(url: string, options: RequestInit): Promise<T>
     })
   }
 
-  if (response.status === 401) endAuthSession('unauthorized')
+  if (response.status === 401 && requestSession) {
+    endAuthSessionIfCurrent(requestSession, 'unauthorized')
+  }
 
   const body = await parseResponseBody(response)
   if (!response.ok) {

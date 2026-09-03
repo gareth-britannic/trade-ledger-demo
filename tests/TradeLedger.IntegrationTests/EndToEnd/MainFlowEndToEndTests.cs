@@ -44,7 +44,8 @@ public sealed class MainFlowEndToEndTests
         }
 
         var position = await WaitForFinalPositionAsync(client, symbol);
-        using var lotsResponse = await client.GetAsync($"/api/positions/{symbol}/lots");
+        using var lotsResponse = await client.GetAsync(
+            $"/api/positions/lots?symbol={Uri.EscapeDataString(symbol)}");
 
         // Assert
         position.ShouldBe(new PositionResponse(symbol, 50m, 12m, 650m));

@@ -53,7 +53,7 @@ public sealed class PositionsControllerTests(TradeLedgerApiFactory factory)
     }
 
     [Fact]
-    public async Task GetLots_NormalizesSymbolAndReturnsFifoOrder()
+    public async Task GetLots_QueryParameterRoundTripsSlashSymbolAndReturnsFifoOrder()
     {
         await ApiTestData.ResetAsync(factory.Services);
         var earlyId = Guid.NewGuid();
@@ -62,18 +62,18 @@ public sealed class PositionsControllerTests(TradeLedgerApiFactory factory)
         var late = early.AddMinutes(1);
         await ApiTestData.SeedPositionAsync(
             factory.Services,
-            "ACME",
+            "BRK/B",
             7m,
             new LotSeed(lateId, 4m, 12m, late),
             new LotSeed(earlyId, 6m, 10m, early));
         using var client = factory.CreateAuthenticatedClient();
 
-        var response = await client.GetAsync("/api/positions/%20acme%20/lots");
+        var response = await client.GetAsync("/api/positions/lots?symbol=%20brk%2Fb%20");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         (await response.Content.ReadFromJsonAsync<LotResponse[]>()).ShouldBe([
-            new LotResponse(earlyId, "ACME", 6m, 10m, early),
-            new LotResponse(lateId, "ACME", 4m, 12m, late)
+            new LotResponse(earlyId, "BRK/B", 6m, 10m, early),
+            new LotResponse(lateId, "BRK/B", 4m, 12m, late)
         ]);
     }
 
@@ -84,7 +84,7 @@ public sealed class PositionsControllerTests(TradeLedgerApiFactory factory)
         using var client = factory.CreateAuthenticatedClient();
         client.DefaultRequestHeaders.Add(CorrelationIdMiddleware.HeaderName, "missing-position-correlation");
 
-        var response = await client.GetAsync("/api/positions/missing/lots");
+        var response = await client.GetAsync("/api/positions/lots?symbol=missing");
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
         response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
@@ -102,7 +102,7 @@ public sealed class PositionsControllerTests(TradeLedgerApiFactory factory)
         using var client = factory.CreateAuthenticatedClient();
         client.DefaultRequestHeaders.Add(CorrelationIdMiddleware.HeaderName, "invalid-symbol-correlation");
 
-        var response = await client.GetAsync("/api/positions/%24bad/lots");
+        var response = await client.GetAsync("/api/positions/lots?symbol=%24bad");
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
@@ -110,6 +110,22 @@ public sealed class PositionsControllerTests(TradeLedgerApiFactory factory)
         problem.RootElement.GetProperty("errors").TryGetProperty("symbol", out _).ShouldBeTrue();
         problem.RootElement.GetProperty("correlationId").GetString()
             .ShouldBe("invalid-symbol-correlation");
+    }
+
+    [Fact]
+    public async Task GetLots_WhenSymbolQueryIsMissing_ReturnsValidationProblem()
+    {
+        using var client = factory.CreateAuthenticatedClient();
+        client.DefaultRequestHeaders.Add(CorrelationIdMiddleware.HeaderName, "missing-symbol-correlation");
+
+        var response = await client.GetAsync("/api/positions/lots");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        problem.RootElement.GetProperty("errors").TryGetProperty("symbol", out _).ShouldBeTrue();
+        problem.RootElement.GetProperty("correlationId").GetString()
+            .ShouldBe("missing-symbol-correlation");
     }
 
     [Fact]

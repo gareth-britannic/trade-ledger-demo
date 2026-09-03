@@ -25,32 +25,54 @@ interface PositionsPageProps {
 
 function PositionLoadingState() {
   return (
-    <div aria-label="Loading positions" className="rounded-modal border border-line" role="status">
+    <div aria-label="Loading positions" role="status">
       <span className="sr-only">Loading positions…</span>
-      <Skeleton className="h-11 rounded-b-none" />
-      {[0, 1, 2, 3].map((row) => (
-        <div className="grid h-12 grid-cols-5 items-center gap-6 border-t border-line px-5" key={row}>
-          <Skeleton className="h-3 w-16" />
-          <Skeleton className="h-3 w-20" />
-          <Skeleton className="h-3 w-20" />
-          <Skeleton className="h-3 w-24" />
-          <Skeleton className="ml-auto h-3 w-20" />
-        </div>
-      ))}
+      <div className="hidden rounded-modal border border-line md:block" data-testid="positions-loading-desktop">
+        <Skeleton className="h-11 rounded-b-none" />
+        {[0, 1, 2, 3].map((row) => (
+          <div className="grid h-12 grid-cols-5 items-center gap-6 border-t border-line px-5" key={row}>
+            <Skeleton className="h-3 w-16" />
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="ml-auto h-3 w-20" />
+          </div>
+        ))}
+      </div>
+      <div className="space-y-3 md:hidden" data-testid="positions-loading-mobile">
+        {[0, 1, 2, 3].map((row) => (
+          <div className="rounded-modal border border-line p-4" key={row}>
+            <div className="flex items-center justify-between gap-4 border-b border-line pb-3">
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="h-3 w-16" />
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Skeleton className="h-2.5 w-12" />
+                <Skeleton className="h-3 w-20" />
+              </div>
+              <div className="space-y-2">
+                <Skeleton className="h-2.5 w-12" />
+                <Skeleton className="h-3 w-20" />
+              </div>
+            </div>
+            <Skeleton className="mt-3 h-8 w-full" />
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
 
-function ErrorState({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+function positionErrorMessage(error: unknown, fallback: string) {
   const fieldMessage = error instanceof ApiError ? Object.values(error.fieldErrors).flat()[0] : undefined
-  const message =
-    error instanceof ApiError
-      ? (error.detail ?? fieldMessage ?? error.message)
-      : 'Positions could not be loaded. Try again.'
+  return error instanceof ApiError ? (error.detail ?? fieldMessage ?? error.message) : fallback
+}
 
+function ErrorState({ error, onRetry }: { error: unknown; onRetry: () => void }) {
   return (
     <InlineNotice title="Positions unavailable" tone="error">
-      <p>{message}</p>
+      <p>{positionErrorMessage(error, 'Positions could not be loaded. Try again.')}</p>
       {error instanceof ApiError && error.correlationId ? (
         <p className="mt-2 font-mono text-xs">Correlation ID: {error.correlationId}</p>
       ) : null}
@@ -61,20 +83,57 @@ function ErrorState({ error, onRetry }: { error: unknown; onRetry: () => void })
   )
 }
 
+function RefreshErrorState({
+  error,
+  isRetrying,
+  onRetry,
+}: {
+  error: unknown
+  isRetrying: boolean
+  onRetry: () => void
+}) {
+  return (
+    <InlineNotice className="mb-4" title="Positions could not be refreshed" tone="warning">
+      <p>The last loaded positions are still shown.</p>
+      <p className="mt-1">{positionErrorMessage(error, 'The latest positions could not be loaded.')}</p>
+      {error instanceof ApiError && error.correlationId ? (
+        <p className="mt-2 font-mono text-xs">Correlation ID: {error.correlationId}</p>
+      ) : null}
+      <Button
+        className="mt-3"
+        isLoading={isRetrying}
+        loadingLabel="Retrying…"
+        onClick={onRetry}
+        size="sm"
+        variant="secondary"
+      >
+        Try again
+      </Button>
+    </InlineNotice>
+  )
+}
+
 function PnlValue({ value }: { value: number | undefined }) {
   const tone = value == null || value === 0 ? 'text-ink-2' : value > 0 ? 'text-accent' : 'text-warn'
-  const meaning = value == null || value === 0 ? 'No gain or loss' : value > 0 ? 'Profit' : 'Loss'
+  const meaning =
+    value == null ? 'P&L unavailable' : value === 0 ? 'No gain or loss' : value > 0 ? 'Profit' : 'Loss'
+  const formattedValue = value === 0 ? formatMoney(value) : formatSignedMoney(value)
 
   return (
-    <span className={`font-data ${tone}`}>
+    <span className={`shrink-0 font-data ${tone}`}>
       <span className="sr-only">{meaning}: </span>
-      {formatSignedMoney(value)}
+      {formattedValue}
     </span>
   )
 }
 
+function normalizeSymbol(symbol: string | null | undefined) {
+  const normalized = symbol?.trim().toUpperCase()
+  return normalized ? normalized : null
+}
+
 export function PositionsPage({ onAddFill }: PositionsPageProps) {
-  const [selectedPosition, setSelectedPosition] = useState<PositionResponse | null>(null)
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null)
   const positionsQuery = useGetPositions<PositionResponse[]>({
     query: {
       staleTime: 20_000,
@@ -83,6 +142,13 @@ export function PositionsPage({ onAddFill }: PositionsPageProps) {
     },
   })
   const positions = positionsQuery.data ?? []
+  const hasPositionData = positionsQuery.data !== undefined
+  const initialError = positionsQuery.isError && !hasPositionData
+  const refreshError = positionsQuery.isError && hasPositionData
+  const selectedPosition =
+    selectedSymbol === null
+      ? null
+      : (positions.find((position) => normalizeSymbol(position.symbol) === selectedSymbol) ?? null)
 
   return (
     <main className="mx-auto w-full max-w-screen-2xl px-4 py-6 sm:px-6 lg:px-8">
@@ -110,11 +176,19 @@ export function PositionsPage({ onAddFill }: PositionsPageProps) {
 
       {positionsQuery.isPending ? <PositionLoadingState /> : null}
 
-      {positionsQuery.isError ? (
+      {initialError ? (
         <ErrorState error={positionsQuery.error} onRetry={() => void positionsQuery.refetch()} />
       ) : null}
 
-      {!positionsQuery.isPending && !positionsQuery.isError && positions.length === 0 ? (
+      {refreshError ? (
+        <RefreshErrorState
+          error={positionsQuery.error}
+          isRetrying={positionsQuery.isFetching}
+          onRetry={() => void positionsQuery.refetch()}
+        />
+      ) : null}
+
+      {hasPositionData && positions.length === 0 ? (
         <EmptyState
           action={
             onAddFill ? (
@@ -128,7 +202,7 @@ export function PositionsPage({ onAddFill }: PositionsPageProps) {
         />
       ) : null}
 
-      {!positionsQuery.isPending && !positionsQuery.isError && positions.length > 0 ? (
+      {hasPositionData && positions.length > 0 ? (
         <>
           <div className="hidden md:block">
             <TableContainer className="bg-surface">
@@ -144,10 +218,11 @@ export function PositionsPage({ onAddFill }: PositionsPageProps) {
                 </TableHeader>
                 <TableBody className="bg-ground">
                   {positions.map((position, index) => {
-                    const symbol = position.symbol?.toUpperCase() ?? '—'
+                    const positionSymbol = normalizeSymbol(position.symbol)
+                    const symbol = positionSymbol ?? '—'
                     return (
                       <TableRow className="h-12" key={`${symbol}-${index}`}>
-                        <TableCell className="px-5 font-data font-semibold text-ink">{symbol}</TableCell>
+                        <TableCell className="break-all px-5 font-data font-semibold text-ink">{symbol}</TableCell>
                         <TableCell className="px-5 font-data text-ink">
                           {formatQuantity(position.openQuantity)}
                         </TableCell>
@@ -157,8 +232,8 @@ export function PositionsPage({ onAddFill }: PositionsPageProps) {
                         <TableCell className="px-5"><PnlValue value={position.realisedPnl} /></TableCell>
                         <TableCell className="px-5 text-right">
                           <Button
-                            disabled={!position.symbol}
-                            onClick={() => setSelectedPosition(position)}
+                            disabled={!positionSymbol}
+                            onClick={() => setSelectedSymbol(positionSymbol)}
                             size="sm"
                             variant="ghost"
                           >
@@ -175,11 +250,12 @@ export function PositionsPage({ onAddFill }: PositionsPageProps) {
 
           <ul className="space-y-3 md:hidden">
             {positions.map((position, index) => {
-              const symbol = position.symbol?.toUpperCase() ?? '—'
+              const positionSymbol = normalizeSymbol(position.symbol)
+              const symbol = positionSymbol ?? '—'
               return (
                 <li className="rounded-modal border border-line bg-ground p-4" key={`${symbol}-${index}`}>
                   <div className="flex items-center justify-between gap-4 border-b border-line pb-3">
-                    <span className="font-data font-semibold text-ink">{symbol}</span>
+                    <span className="min-w-0 break-all font-data font-semibold text-ink">{symbol}</span>
                     <PnlValue value={position.realisedPnl} />
                   </div>
                   <dl className="mt-3 grid grid-cols-2 gap-4">
@@ -194,8 +270,8 @@ export function PositionsPage({ onAddFill }: PositionsPageProps) {
                   </dl>
                   <Button
                     className="mt-3 w-full"
-                    disabled={!position.symbol}
-                    onClick={() => setSelectedPosition(position)}
+                    disabled={!positionSymbol}
+                    onClick={() => setSelectedSymbol(positionSymbol)}
                     size="sm"
                     variant="secondary"
                   >
@@ -210,10 +286,11 @@ export function PositionsPage({ onAddFill }: PositionsPageProps) {
 
       <LotsDrawer
         onOpenChange={(open) => {
-          if (!open) setSelectedPosition(null)
+          if (!open) setSelectedSymbol(null)
         }}
-        open={selectedPosition !== null}
+        open={selectedSymbol !== null}
         position={selectedPosition}
+        symbol={selectedSymbol}
       />
     </main>
   )

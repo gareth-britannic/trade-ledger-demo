@@ -186,9 +186,12 @@ The current scope is one authenticated shared ledger, not a multi-tenant product
 | --- | --- | --- |
 | `POST` | `/api/fills` | Validates and queues a fill; returns `202` with its stable fill ID after SQS accepts the message |
 | `GET` | `/api/positions` | Returns positions with open quantity, weighted average unit cost, and realised P&L |
-| `GET` | `/api/positions/{symbol}/lots` | Returns open lots in FIFO order; returns `404` for a valid but unknown symbol |
+| `GET` | `/api/positions/lots?symbol={symbol}` | Returns open lots in FIFO order; returns `404` for a valid but unknown symbol |
 | `POST` | `/api/explain` | Returns visible deterministic tool calls and a ledger-derived answer; real LLM narration is not implemented yet |
 | `GET` | `/health` | Returns aggregate PostgreSQL health |
+
+The lots symbol is a query parameter so valid symbols containing `/`, such as `BRK/B`, round-trip without
+being interpreted as path segments. URL-encode the parameter when constructing this request manually.
 
 Validation and not-found responses use `application/problem+json`. The API accepts or creates an `X-Correlation-Id`, returns it in the response, places it in structured logs, and sends it as an SQS message attribute so one fill can be followed from HTTP request to processor execution.
 
@@ -331,7 +334,7 @@ Processing is asynchronous. Poll the API until `DEMO` reports an open quantity o
 
 ```bash
 curl -fsS -H "Authorization: Bearer $TOKEN" http://localhost:5232/api/positions
-curl -fsS -H "Authorization: Bearer $TOKEN" http://localhost:5232/api/positions/DEMO/lots
+curl -fsS -H "Authorization: Bearer $TOKEN" 'http://localhost:5232/api/positions/lots?symbol=DEMO'
 ```
 
 ### 4. Run the automated real-infrastructure proof

@@ -6,11 +6,8 @@ import { CognitoAuthClient, type SignInCredentials } from './cognito-auth-client
 import {
   endAuthSession,
   establishAuthSession,
-  getAuthSession,
-  registerUnauthorizedHandler,
+  getAuthSessionSnapshot,
   subscribeToAuthSession,
-  type AuthSession,
-  type AuthSessionEndReason,
 } from './session-bridge'
 
 export interface AuthProviderProps {
@@ -22,27 +19,16 @@ const defaultClient = new CognitoAuthClient()
 
 export function AuthProvider({ children, client = defaultClient }: AuthProviderProps) {
   const navigate = useNavigate()
-  const [session, setSession] = useState<AuthSession | null>(() => getAuthSession())
-  const [sessionEndReason, setSessionEndReason] = useState<AuthSessionEndReason | null>(null)
-
-  useEffect(
-    () =>
-      subscribeToAuthSession((nextSession, reason) => {
-        setSession(nextSession)
-        setSessionEndReason(reason ?? null)
-        if (reason === 'expired') {
-          void navigate('/sign-in', { replace: true, state: { reason: 'expired' } })
-        }
-      }),
-    [navigate],
+  const [{ session, endReason: sessionEndReason }, setAuthSessionSnapshot] = useState(() =>
+    getAuthSessionSnapshot(),
   )
 
   useEffect(
     () =>
-      registerUnauthorizedHandler(() => {
-        void navigate('/sign-in', { replace: true, state: { reason: 'unauthorized' } })
+      subscribeToAuthSession((nextSession, reason) => {
+        setAuthSessionSnapshot({ session: nextSession, endReason: reason ?? null })
       }),
-    [navigate],
+    [],
   )
 
   useEffect(() => {

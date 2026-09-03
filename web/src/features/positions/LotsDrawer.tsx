@@ -22,6 +22,7 @@ interface LotsDrawerProps {
   onOpenChange: (open: boolean) => void
   open: boolean
   position: PositionResponse | null
+  symbol: string | null
 }
 
 function LotsLoadingState() {
@@ -65,11 +66,11 @@ function LotsErrorState({ error, onRetry }: { error: unknown; onRetry: () => voi
   )
 }
 
-export function LotsDrawer({ onOpenChange, open, position }: LotsDrawerProps) {
-  const symbol = position?.symbol?.toUpperCase() ?? ''
-  const lotsQuery = useGetPositionLots(encodeURIComponent(symbol), {
+export function LotsDrawer({ onOpenChange, open, position, symbol }: LotsDrawerProps) {
+  const normalizedSymbol = symbol?.trim().toUpperCase() ?? ''
+  const lotsQuery = useGetPositionLots({ symbol: normalizedSymbol }, {
     query: {
-      enabled: open && symbol.length > 0,
+      enabled: open && normalizedSymbol.length > 0,
       select: (response): LotResponse[] =>
         response.status === 200 && Array.isArray(response.data) ? response.data : [],
     },
@@ -81,7 +82,7 @@ export function LotsDrawer({ onOpenChange, open, position }: LotsDrawerProps) {
       description="FIFO order — oldest first"
       onOpenChange={onOpenChange}
       open={open}
-      title={`${symbol || 'Position'} — Open lots`}
+      title={<span className="block break-all">{normalizedSymbol || 'Position'} — Open lots</span>}
     >
       {lotsQuery.isPending ? <LotsLoadingState /> : null}
 
@@ -100,7 +101,7 @@ export function LotsDrawer({ onOpenChange, open, position }: LotsDrawerProps) {
         <>
           <TableContainer>
             <Table>
-              <caption className="sr-only">FIFO-ordered open lots for {symbol}</caption>
+              <caption className="sr-only">FIFO-ordered open lots for {normalizedSymbol}</caption>
               <TableHeader>
                 <TableRow className="hover:bg-surface">
                   <TableHead>Opened</TableHead>
@@ -126,15 +127,17 @@ export function LotsDrawer({ onOpenChange, open, position }: LotsDrawerProps) {
             </Table>
           </TableContainer>
 
-          <div className="mt-4 rounded-control bg-accent-soft px-4 py-3">
-            <p className="font-data font-semibold text-accent">
-              {formatQuantity(position?.openQuantity)} remaining · avg cost{' '}
-              {formatMoney(position?.averageUnitCost)}
-            </p>
-            <p className="mt-1 text-body text-ink-2">
-              A sell consumes the oldest open lot first.
-            </p>
-          </div>
+          {position ? (
+            <div className="mt-4 rounded-control bg-accent-soft px-4 py-3">
+              <p className="break-words font-data font-semibold text-accent">
+                {formatQuantity(position.openQuantity)} remaining · avg cost{' '}
+                {formatMoney(position.averageUnitCost)}
+              </p>
+              <p className="mt-1 text-body text-ink-2">
+                A sell consumes the oldest open lot first.
+              </p>
+            </div>
+          ) : null}
         </>
       ) : null}
     </Drawer>

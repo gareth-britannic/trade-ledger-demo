@@ -16,7 +16,8 @@ public sealed class FillsController(IFillRequestService fillRequestService) : Co
 {
     /// <summary>Accepts and queues a fill.</summary>
     /// <remarks>
-    /// The fill is persisted before it is published for asynchronous processing.
+    /// The API returns 202 only after SQS accepts the fill. The processor later persists and applies
+    /// it transactionally.
     /// </remarks>
     /// <param name="request">The executed fill to accept.</param>
     /// <param name="cancellationToken">Cancels work when the request is aborted.</param>

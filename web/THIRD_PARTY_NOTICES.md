@@ -33,3 +33,14 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## IBM Plex typefaces via Fontsource
+
+The web client self-hosts IBM Plex Sans and IBM Plex Mono through the
+`@fontsource-variable/ibm-plex-sans` and `@fontsource/ibm-plex-mono` packages.
+
+- Typeface project: IBM Plex
+- Packaging project: Fontsource
+- Package version: `5.3.0`
+- Typeface license: SIL Open Font License 1.1
+- License files: distributed with each installed package as `LICENSE`
