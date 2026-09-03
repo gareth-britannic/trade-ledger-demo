@@ -4,7 +4,6 @@ import {
   endAuthSession,
   establishAuthSession,
   getAuthSession,
-  registerUnauthorizedHandler,
 } from '../../features/auth/session-bridge'
 import { createAppQueryClient } from '../../app/providers/query-client'
 import { ApiError, apiFetch } from './api-fetch'
@@ -90,14 +89,12 @@ describe('apiFetch', () => {
     })
   })
 
-  it('takes a correlation ID from the response header and clears the session on an empty 401', async () => {
+  it('takes a correlation ID from the response header and clears the current session on an empty 401', async () => {
     establishAuthSession({
       accessToken: 'rejected-token',
       email: 'demo@trade-ledger.local',
       expiresAt: Date.now() + 60_000,
     })
-    const redirect = vi.fn()
-    const unregister = registerUnauthorizedHandler(redirect)
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>
@@ -121,8 +118,37 @@ describe('apiFetch', () => {
       correlationId: 'header-only-correlation',
     })
     expect(getAuthSession()).toBeNull()
-    expect(redirect).toHaveBeenCalledOnce()
-    unregister()
+  })
+
+  it('does not let a delayed 401 clear a newer authentication session', async () => {
+    establishAuthSession({
+      accessToken: 'superseded-token',
+      email: 'first@trade-ledger.local',
+      expiresAt: Date.now() + 60_000,
+    })
+    let resolveResponse: ((response: Response) => void) | undefined
+    const responsePending = new Promise<Response>((resolve) => {
+      resolveResponse = resolve
+    })
+    const fetchMock = vi.fn<typeof fetch>(() => responsePending)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const rejectedRequest = apiFetch('/api/positions', { method: 'GET' })
+    establishAuthSession({
+      accessToken: 'current-token',
+      email: 'second@trade-ledger.local',
+      expiresAt: Date.now() + 60_000,
+    })
+
+    resolveResponse?.(new Response(null, { status: 401, statusText: 'Unauthorized' }))
+
+    await expect(rejectedRequest).rejects.toMatchObject({ status: 401 })
+    expect(getAuthSession()).toMatchObject({
+      accessToken: 'current-token',
+      email: 'second@trade-ledger.local',
+    })
+    const requestHeaders = new Headers(fetchMock.mock.calls[0]?.[1]?.headers)
+    expect(requestHeaders.get('Authorization')).toBe('Bearer superseded-token')
   })
 
   it('normalizes transport failures without exposing the original message', async () => {

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using TradeLedger.Api.Constants;
 using TradeLedger.Api.Contracts.Positions;
 using TradeLedger.Application.Interfaces;
@@ -35,7 +36,7 @@ public sealed class PositionsController(IPositionQueryService positionQueryServi
     /// The symbol is trimmed and normalized before lookup. A well-formed symbol with no persisted
     /// position returns 404.
     /// </remarks>
-    /// <param name="symbol">The case-insensitive market symbol.</param>
+    /// <param name="symbol">The case-insensitive market symbol supplied as a query parameter.</param>
     /// <param name="cancellationToken">Cancels work when the request is aborted.</param>
     /// <returns>The position's open lots in FIFO order.</returns>
     [HttpGet(ApiRoutes.PositionLots, Name = ApiOperationIds.GetPositionLots)]
@@ -45,7 +46,7 @@ public sealed class PositionsController(IPositionQueryService positionQueryServi
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<IReadOnlyList<LotResponse>>> GetLots(
-        string symbol,
+        [BindRequired] string symbol,
         CancellationToken cancellationToken)
     {
         var results = await positionQueryService.GetOpenLotsAsync(symbol, cancellationToken);

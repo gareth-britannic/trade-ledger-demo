@@ -21,6 +21,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  GetPositionLotsParams,
   LotResponse,
   PositionResponse,
   ProblemDetails
@@ -249,12 +250,19 @@ export type getPositionLotsResponseError = (getPositionLotsResponse400Applicatio
 
 export type getPositionLotsResponse = (getPositionLotsResponseSuccess | getPositionLotsResponseError)
 
-export const getGetPositionLotsUrl = (symbol: string,) => {
+export const getGetPositionLotsUrl = (params: GetPositionLotsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/positions/${symbol}/lots`
+  return stringifiedParams.length > 0 ? `/api/positions/lots?${stringifiedParams}` : `/api/positions/lots`
 }
 
 /**
@@ -262,9 +270,9 @@ export const getGetPositionLotsUrl = (symbol: string,) => {
  * position returns 404.
  * @summary Gets the FIFO-ordered open lots for a position.
  */
-export const getPositionLots = async (symbol: string, options?: Parameters<typeof apiFetch>[1]): Promise<getPositionLotsResponse> => {
+export const getPositionLots = async (params: GetPositionLotsParams, options?: Parameters<typeof apiFetch>[1]): Promise<getPositionLotsResponse> => {
 
-  return apiFetch<getPositionLotsResponse>(getGetPositionLotsUrl(symbol),
+  return apiFetch<getPositionLotsResponse>(getGetPositionLotsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -277,29 +285,29 @@ export const getPositionLots = async (symbol: string, options?: Parameters<typeo
 
 
 
-export const getGetPositionLotsQueryKey = (symbol: string,) => {
+export const getGetPositionLotsQueryKey = (params?: GetPositionLotsParams,) => {
     return [
-    `/api/positions/${symbol}/lots`
+    `/api/positions/lots`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetPositionLotsQueryOptions = <TData = Awaited<ReturnType<typeof getPositionLots>>, TError = ErrorType<ProblemDetails>>(symbol: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPositionLots>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+export const getGetPositionLotsQueryOptions = <TData = Awaited<ReturnType<typeof getPositionLots>>, TError = ErrorType<ProblemDetails>>(params: GetPositionLotsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPositionLots>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetPositionLotsQueryKey(symbol);
+  const queryKey =  queryOptions?.queryKey ?? getGetPositionLotsQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPositionLots>>> = ({ signal }) => getPositionLots(symbol, { signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPositionLots>>> = ({ signal }) => getPositionLots(params, { signal, ...requestOptions });
 
 
 
 
 
-   return  { queryKey, queryFn, enabled: symbol !== null && symbol !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPositionLots>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPositionLots>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type GetPositionLotsQueryResult = NonNullable<Awaited<ReturnType<typeof getPositionLots>>>
@@ -307,7 +315,7 @@ export type GetPositionLotsQueryError = ErrorType<ProblemDetails>
 
 
 export function useGetPositionLots<TData = Awaited<ReturnType<typeof getPositionLots>>, TError = ErrorType<ProblemDetails>>(
- symbol: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPositionLots>>, TError, TData>> & Pick<
+ params: GetPositionLotsParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPositionLots>>, TError, TData>> & Pick<
         DefinedInitialDataOptions<
           Awaited<ReturnType<typeof getPositionLots>>,
           TError,
@@ -317,7 +325,7 @@ export function useGetPositionLots<TData = Awaited<ReturnType<typeof getPosition
  , queryClient?: QueryClient
   ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 export function useGetPositionLots<TData = Awaited<ReturnType<typeof getPositionLots>>, TError = ErrorType<ProblemDetails>>(
- symbol: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPositionLots>>, TError, TData>> & Pick<
+ params: GetPositionLotsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPositionLots>>, TError, TData>> & Pick<
         UndefinedInitialDataOptions<
           Awaited<ReturnType<typeof getPositionLots>>,
           TError,
@@ -327,7 +335,7 @@ export function useGetPositionLots<TData = Awaited<ReturnType<typeof getPosition
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 export function useGetPositionLots<TData = Awaited<ReturnType<typeof getPositionLots>>, TError = ErrorType<ProblemDetails>>(
- symbol: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPositionLots>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ params: GetPositionLotsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPositionLots>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
@@ -335,11 +343,11 @@ export function useGetPositionLots<TData = Awaited<ReturnType<typeof getPosition
  */
 
 export function useGetPositionLots<TData = Awaited<ReturnType<typeof getPositionLots>>, TError = ErrorType<ProblemDetails>>(
- symbol: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPositionLots>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ params: GetPositionLotsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPositionLots>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
  , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
-  const queryOptions = getGetPositionLotsQueryOptions(symbol,options)
+  const queryOptions = getGetPositionLotsQueryOptions(params,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

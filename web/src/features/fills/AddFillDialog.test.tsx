@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { type ReactElement, useState } from 'react'
@@ -31,13 +31,36 @@ function renderWithQueryClient(ui: ReactElement) {
   }
 }
 
-async function completeFillForm(user: ReturnType<typeof userEvent.setup>) {
-  await user.type(screen.getByRole('textbox', { name: 'Symbol' }), 'aapl')
+async function completeFillForm(
+  user: ReturnType<typeof userEvent.setup>,
+  symbol = 'aapl',
+) {
+  await user.type(screen.getByRole('textbox', { name: 'Symbol' }), symbol)
   await user.type(screen.getByRole('textbox', { name: 'Quantity' }), '10.125')
   await user.type(screen.getByRole('textbox', { name: 'Price (GBP)' }), '191.40')
   fireEvent.change(screen.getByLabelText(/Execution date & time/i), {
     target: { value: '2026-09-03T14:30' },
   })
+}
+
+function deferred<T>() {
+  let resolve: (value: T | PromiseLike<T>) => void = () => undefined
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise
+  })
+  return { promise, resolve }
+}
+
+function ReopenableDialog() {
+  const [open, setOpen] = useState(true)
+  return (
+    <>
+      <button onClick={() => setOpen(true)} type="button">
+        Open fill form
+      </button>
+      <AddFillDialog onOpenChange={setOpen} open={open} />
+    </>
+  )
 }
 
 describe('AddFillDialog', () => {
@@ -127,6 +150,205 @@ describe('AddFillDialog', () => {
       price: 191.4,
     })
     expect(requests[1]?.executedAt).toMatch(/^2026-09-03T/u)
+  })
+
+  it('starts a new fill identity when retry details change after an ambiguous failure', async () => {
+    const user = userEvent.setup()
+    const requests: CreateFillRequest[] = []
+    const generatedIds = [
+      '10000000-0000-4000-8000-000000000011',
+      '10000000-0000-4000-8000-000000000012',
+    ] as const
+    const randomUuid = vi
+      .spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValueOnce(generatedIds[0])
+      .mockReturnValueOnce(generatedIds[1])
+    server.use(
+      http.post('/api/fills', async ({ request }) => {
+        requests.push((await request.json()) as CreateFillRequest)
+        if (requests.length === 1) return HttpResponse.error()
+        return HttpResponse.json(acceptedFillFixture, { status: 202 })
+      }),
+      http.get('/api/positions', () => HttpResponse.json([])),
+    )
+    renderWithQueryClient(<AddFillDialog onOpenChange={vi.fn()} open />)
+
+    await completeFillForm(user)
+    await user.click(screen.getByRole('button', { name: 'Submit fill' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Changing details starts a new fill attempt.',
+    )
+
+    const price = screen.getByRole('textbox', { name: 'Price (GBP)' })
+    await user.clear(price)
+    await user.type(price, '200.25')
+    await user.click(screen.getByRole('button', { name: 'Submit fill' }))
+
+    expect(await screen.findByText('202 Accepted')).toBeVisible()
+    expect(requests).toHaveLength(2)
+    expect(requests[0]).toMatchObject({ fillId: generatedIds[0], price: 191.4 })
+    expect(requests[1]).toMatchObject({ fillId: generatedIds[1], price: 200.25 })
+    expect(randomUuid).toHaveBeenCalledTimes(2)
+  })
+
+  it('allows only one in-flight submission for a rapid duplicate submit', async () => {
+    const user = userEvent.setup()
+    const responseGate = deferred<void>()
+    const requests: CreateFillRequest[] = []
+    const acceptedFillId = acceptedFillFixture.fillId
+    if (!acceptedFillId) throw new Error('Expected a typed accepted-fill fixture ID.')
+    const randomUuid = vi
+      .spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValue(acceptedFillId as ReturnType<Crypto['randomUUID']>)
+    server.use(
+      http.post('/api/fills', async ({ request }) => {
+        requests.push((await request.json()) as CreateFillRequest)
+        await responseGate.promise
+        return HttpResponse.json(acceptedFillFixture, { status: 202 })
+      }),
+      http.get('/api/positions', () => HttpResponse.json([])),
+    )
+    renderWithQueryClient(<AddFillDialog onOpenChange={vi.fn()} open />)
+
+    await completeFillForm(user)
+    const submit = screen.getByRole('button', { name: 'Submit fill' })
+    const form = submit.closest('form')
+    if (!form) throw new Error('Expected the submit button to belong to the fill form.')
+    fireEvent.submit(form)
+    fireEvent.submit(form)
+
+    await waitFor(() => expect(requests).toHaveLength(1))
+    expect(randomUuid).toHaveBeenCalledOnce()
+
+    act(() => responseGate.resolve())
+    expect(await screen.findByText('202 Accepted')).toBeVisible()
+  })
+
+  it('keeps a newer retry UUID canonical when an older pending dialog completes after reopen', async () => {
+    const user = userEvent.setup()
+    const firstResponseGate = deferred<void>()
+    const requests: CreateFillRequest[] = []
+    let positionRequests = 0
+    const generatedIds = [
+      '10000000-0000-4000-8000-000000000001',
+      '10000000-0000-4000-8000-000000000002',
+    ] as const
+    const randomUuid = vi
+      .spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValueOnce(generatedIds[0])
+      .mockReturnValueOnce(generatedIds[1])
+    server.use(
+      http.post('/api/fills', async ({ request }) => {
+        requests.push((await request.json()) as CreateFillRequest)
+        if (requests.length === 1) {
+          await firstResponseGate.promise
+          return HttpResponse.json(acceptedFillFixture, { status: 202 })
+        }
+        if (requests.length === 2) return HttpResponse.error()
+        return HttpResponse.json(acceptedFillFixture, { status: 202 })
+      }),
+      http.get('/api/positions', () => {
+        positionRequests += 1
+        return HttpResponse.json([])
+      }),
+    )
+    renderWithQueryClient(<ReopenableDialog />)
+
+    await completeFillForm(user)
+    await user.click(screen.getByRole('button', { name: 'Submit fill' }))
+    await waitFor(() => expect(requests).toHaveLength(1))
+    await user.click(screen.getByRole('button', { name: 'Close dialog' }))
+    await user.click(screen.getByRole('button', { name: 'Open fill form' }))
+
+    await completeFillForm(user, 'msft')
+    await user.click(screen.getByRole('button', { name: 'Submit fill' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Fill was not accepted')
+
+    act(() => firstResponseGate.resolve())
+    await waitFor(() => expect(positionRequests).toBeGreaterThan(0))
+    expect(screen.getByRole('textbox', { name: 'Symbol' })).toHaveValue('msft')
+    expect(screen.queryByText('202 Accepted')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Submit fill' }))
+    expect(await screen.findByText('202 Accepted')).toBeVisible()
+    expect(requests).toHaveLength(3)
+    expect(requests[0]?.fillId).toBe(generatedIds[0])
+    expect(requests[1]?.fillId).toBe(generatedIds[1])
+    expect(requests[2]?.fillId).toBe(generatedIds[1])
+    expect(randomUuid).toHaveBeenCalledTimes(2)
+  })
+
+  it('lets a stale accepted response refresh the cache without changing reopened UI', async () => {
+    const user = userEvent.setup()
+    const responseGate = deferred<void>()
+    let fillRequests = 0
+    let positionRequests = 0
+    server.use(
+      http.post('/api/fills', async () => {
+        fillRequests += 1
+        await responseGate.promise
+        return HttpResponse.json(acceptedFillFixture, { status: 202 })
+      }),
+      http.get('/api/positions', () => {
+        positionRequests += 1
+        return HttpResponse.json([
+          {
+            symbol: 'AAPL',
+            openQuantity: 10.125,
+            averageUnitCost: 191.4,
+            realisedPnl: 0,
+          },
+        ])
+      }),
+    )
+    const { queryClient } = renderWithQueryClient(<ReopenableDialog />)
+
+    await completeFillForm(user)
+    await user.click(screen.getByRole('button', { name: 'Submit fill' }))
+    await waitFor(() => expect(fillRequests).toBe(1))
+    await user.click(screen.getByRole('button', { name: 'Close dialog' }))
+    await user.click(screen.getByRole('button', { name: 'Open fill form' }))
+    await user.type(screen.getByRole('textbox', { name: 'Symbol' }), 'msft')
+
+    act(() => responseGate.resolve())
+    await waitFor(() => expect(positionRequests).toBeGreaterThan(0))
+
+    expect(queryClient.getQueryData<getPositionsResponse>(getGetPositionsQueryKey())).toMatchObject({
+      data: [{ symbol: 'AAPL' }],
+    })
+    expect(screen.getByRole('textbox', { name: 'Symbol' })).toHaveValue('msft')
+    expect(screen.queryByText('202 Accepted')).not.toBeInTheDocument()
+  })
+
+  it('does not continue into accepted-state polling after unmount', async () => {
+    const user = userEvent.setup()
+    const responseGate = deferred<void>()
+    let fillRequests = 0
+    let fillResponses = 0
+    let positionRequests = 0
+    server.use(
+      http.post('/api/fills', async () => {
+        fillRequests += 1
+        await responseGate.promise
+        fillResponses += 1
+        return HttpResponse.json(acceptedFillFixture, { status: 202 })
+      }),
+      http.get('/api/positions', () => {
+        positionRequests += 1
+        return HttpResponse.json([])
+      }),
+    )
+    const { unmount } = renderWithQueryClient(<AddFillDialog onOpenChange={vi.fn()} open />)
+
+    await completeFillForm(user)
+    await user.click(screen.getByRole('button', { name: 'Submit fill' }))
+    await waitFor(() => expect(fillRequests).toBe(1))
+    unmount()
+
+    act(() => responseGate.resolve())
+    await waitFor(() => expect(fillResponses).toBe(1))
+    await new Promise((resolve) => window.setTimeout(resolve, 50))
+    expect(positionRequests).toBe(0)
   })
 
   it('keeps refreshing positions after the accepted-fill dialog is dismissed', async () => {
@@ -228,7 +450,12 @@ describe('AddFillDialog', () => {
       }),
     )
 
-    renderWithQueryClient(<AddFillDialog onOpenChange={vi.fn()} open />)
+    const { queryClient } = renderWithQueryClient(<AddFillDialog onOpenChange={vi.fn()} open />)
+    queryClient.setQueryData<getPositionsResponse>(getGetPositionsQueryKey(), {
+      data: [],
+      headers: new Headers(),
+      status: 200,
+    })
     await completeFillForm(user)
     await user.click(screen.getByRole('button', { name: 'Submit fill' }))
 

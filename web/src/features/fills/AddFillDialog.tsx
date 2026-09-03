@@ -6,7 +6,6 @@ import { useForm } from 'react-hook-form'
 import type { CreateFillRequest } from '../../api/generated/model'
 import { useCreateFill } from '../../api/generated/fills/fills'
 import {
-  getGetPositionsQueryOptions,
   getGetPositionsQueryKey,
   type getPositionsResponse,
 } from '../../api/generated/positions/positions'
@@ -25,6 +24,11 @@ import {
 
 type AcceptancePhase = 'editing' | 'accepted' | 'observed' | 'timed-out'
 
+interface LogicalFillAttempt {
+  inFlight: boolean
+  request: CreateFillRequest
+}
+
 export interface AddFillDialogProps {
   onOpenChange: (open: boolean) => void
   open: boolean
@@ -41,12 +45,24 @@ const defaults = (): AddFillInput => ({
 const getApiErrorMessage = (error: ApiError): string =>
   error.detail ?? Object.values(error.fieldErrors).flat()[0] ?? error.message
 
+const isSameFillRequest = (
+  request: CreateFillRequest,
+  candidate: Omit<CreateFillRequest, 'fillId'>,
+): boolean =>
+  request.symbol === candidate.symbol &&
+  request.side === candidate.side &&
+  request.quantity === candidate.quantity &&
+  request.price === candidate.price &&
+  request.executedAt === candidate.executedAt
+
 export function AddFillDialog({ onOpenChange, open }: AddFillDialogProps) {
   const queryClient = useQueryClient()
   const mutation = useCreateFill()
+  const mounted = useRef(false)
+  const attempt = useRef<LogicalFillAttempt | undefined>(undefined)
   const pollControllers = useRef(new Set<AbortController>())
-  const pollSequence = useRef(0)
-  const [attemptFillId, setAttemptFillId] = useState<string>()
+  const uiGeneration = useRef(0)
+  const [attemptSubmitting, setAttemptSubmitting] = useState(false)
   const [phase, setPhase] = useState<AcceptancePhase>('editing')
   const [acceptedSymbol, setAcceptedSymbol] = useState('')
   const [acceptedExecution, setAcceptedExecution] = useState('')
@@ -60,36 +76,37 @@ export function AddFillDialog({ onOpenChange, open }: AddFillDialogProps) {
     defaultValues: defaults(),
   })
 
-  useEffect(
-    () => () => {
-      pollSequence.current += 1
-      for (const controller of pollControllers.current) controller.abort()
-      pollControllers.current.clear()
-    },
-    [],
-  )
+  useEffect(() => {
+    mounted.current = true
+    const controllers = pollControllers.current
+    return () => {
+      mounted.current = false
+      uiGeneration.current += 1
+      for (const controller of controllers) controller.abort()
+      controllers.clear()
+    }
+  }, [])
 
-  const resetAttempt = () => {
-    pollSequence.current += 1
+  const clearAttemptUi = () => {
+    uiGeneration.current += 1
+    attempt.current = undefined
+    setAttemptSubmitting(false)
     mutation.reset()
-    setAttemptFillId(undefined)
     setPhase('editing')
     setAcceptedSymbol('')
     setAcceptedExecution('')
     reset(defaults())
   }
 
+  const resetAttempt = () => {
+    clearAttemptUi()
+  }
+
   const dismissAttempt = () => {
     // Keep the bounded cache refresh running after the dialog closes so the
     // positions screen can converge without requiring the user to keep a
     // modal open. Ignore its later status result because the dialog is reset.
-    pollSequence.current += 1
-    mutation.reset()
-    setAttemptFillId(undefined)
-    setPhase('editing')
-    setAcceptedSymbol('')
-    setAcceptedExecution('')
-    reset(defaults())
+    clearAttemptUi()
   }
 
   const changeOpen = (nextOpen: boolean) => {
@@ -98,49 +115,59 @@ export function AddFillDialog({ onOpenChange, open }: AddFillDialogProps) {
   }
 
   const submitFill = async (values: AddFillValues) => {
-    const stableFillId = attemptFillId ?? crypto.randomUUID()
-    setAttemptFillId(stableFillId)
-    let cachedResponse = queryClient.getQueryData<getPositionsResponse>(getGetPositionsQueryKey())
-    if (!cachedResponse) {
-      try {
-        cachedResponse = await queryClient.fetchQuery({
-          ...getGetPositionsQueryOptions(),
-          staleTime: 0,
-        })
-      } catch {
-        // Fill submission remains available if the optional baseline read fails.
-      }
-    }
-    const baseline = positionFingerprint(cachedResponse, values.symbol)
-    const request: CreateFillRequest = {
-      fillId: stableFillId,
+    const existingAttempt = attempt.current
+    if (existingAttempt?.inFlight) return
+
+    const requestWithoutId: Omit<CreateFillRequest, 'fillId'> = {
       symbol: values.symbol,
       side: values.side,
       quantity: Number(values.quantity),
       price: Number(values.price),
       executedAt: localDateTimeToIso(values.executedAt),
     }
+    const logicalAttempt =
+      existingAttempt && isSameFillRequest(existingAttempt.request, requestWithoutId)
+        ? existingAttempt
+        : {
+            inFlight: false,
+            request: { ...requestWithoutId, fillId: crypto.randomUUID() },
+          }
+    attempt.current = logicalAttempt
+    logicalAttempt.inFlight = true
+    const generation = uiGeneration.current
+    setAttemptSubmitting(true)
+
+    const cachedResponse = queryClient.getQueryData<getPositionsResponse>(getGetPositionsQueryKey())
+    const baseline = positionFingerprint(cachedResponse, values.symbol)
+    const request = logicalAttempt.request
 
     try {
       const response = await mutation.mutateAsync({ data: request })
       if (response.status !== 202) return
 
-      setAttemptFillId(undefined)
-      setAcceptedSymbol(values.symbol)
-      setAcceptedExecution(request.executedAt ?? '')
-      setPhase('accepted')
+      if (!mounted.current) return
+
+      const controlsCurrentUi =
+        uiGeneration.current === generation && attempt.current === logicalAttempt
+      if (controlsCurrentUi) {
+        attempt.current = undefined
+        setAttemptSubmitting(false)
+        setAcceptedSymbol(values.symbol)
+        setAcceptedExecution(request.executedAt ?? '')
+        setPhase('accepted')
+      }
 
       const controller = new AbortController()
       pollControllers.current.add(controller)
-      const sequence = ++pollSequence.current
 
       void observeAcceptedFill(queryClient, values.symbol, baseline, controller.signal)
         .then((result) => {
-          if (pollSequence.current === sequence) setPhase(result)
+          if (mounted.current && uiGeneration.current === generation) setPhase(result)
         })
         .catch((error: unknown) => {
           if (
-            pollSequence.current === sequence &&
+            mounted.current &&
+            uiGeneration.current === generation &&
             !(error instanceof DOMException && error.name === 'AbortError')
           ) {
             setPhase('timed-out')
@@ -149,6 +176,15 @@ export function AddFillDialog({ onOpenChange, open }: AddFillDialogProps) {
         .finally(() => pollControllers.current.delete(controller))
     } catch {
       // The mutation exposes the normalized error while the same fill ID is retained for retry.
+    } finally {
+      logicalAttempt.inFlight = false
+      if (
+        mounted.current &&
+        uiGeneration.current === generation &&
+        attempt.current === logicalAttempt
+      ) {
+        setAttemptSubmitting(false)
+      }
     }
   }
 
@@ -168,7 +204,7 @@ export function AddFillDialog({ onOpenChange, open }: AddFillDialogProps) {
           void handleSubmit(submitFill)(event)
         }}
       >
-        <fieldset className="space-y-[18px]" disabled={isSubmitting || pending}>
+        <fieldset className="space-y-[18px]" disabled={isSubmitting || attemptSubmitting || pending}>
           <legend className="sr-only">Executed fill details</legend>
           <Field
             {...register('symbol')}
@@ -241,7 +277,12 @@ export function AddFillDialog({ onOpenChange, open }: AddFillDialogProps) {
             type="datetime-local"
           />
 
-          <Button className="w-full" isLoading={isSubmitting} loadingLabel="Queuing fill…" type="submit">
+          <Button
+            className="w-full"
+            isLoading={isSubmitting || attemptSubmitting}
+            loadingLabel="Queuing fill…"
+            type="submit"
+          >
             Submit fill
           </Button>
         </fieldset>
@@ -249,7 +290,9 @@ export function AddFillDialog({ onOpenChange, open }: AddFillDialogProps) {
         {apiError ? (
           <InlineNotice className="mt-[18px]" title="Fill was not accepted" tone="error">
             <p>{getApiErrorMessage(apiError)}</p>
-            <p className="mt-1 text-xs">Correct the details or retry. A retry uses the same fill ID.</p>
+            <p className="mt-1 text-xs">
+              An unchanged retry uses the same fill ID. Changing details starts a new fill attempt.
+            </p>
             {apiError.correlationId ? (
               <p className="mt-2 font-mono text-xs">Correlation ID: {apiError.correlationId}</p>
             ) : null}

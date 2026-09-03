@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   endAuthSession,
+  endAuthSessionIfCurrent,
   establishAuthSession,
   getAccessToken,
   getAuthSession,
@@ -49,5 +50,29 @@ describe('session bridge', () => {
     expect(getAccessToken()).toBeNull()
     expect(listener).toHaveBeenCalledWith(null, 'expired')
     unsubscribe()
+  })
+
+  it('treats each session establishment as a distinct identity', () => {
+    const session = {
+      accessToken: 'reused-token',
+      email: 'demo@trade-ledger.local',
+      expiresAt: Date.now() + 60_000,
+    }
+    establishAuthSession(session)
+    const firstEstablishment = getAuthSession()
+    establishAuthSession(session)
+    const secondEstablishment = getAuthSession()
+
+    expect(firstEstablishment).not.toBe(secondEstablishment)
+    expect(firstEstablishment).not.toBeNull()
+    expect(secondEstablishment).not.toBeNull()
+    if (!firstEstablishment || !secondEstablishment) {
+      throw new Error('Expected both authentication sessions to be established.')
+    }
+
+    expect(endAuthSessionIfCurrent(firstEstablishment, 'unauthorized')).toBe(false)
+    expect(getAuthSession()).toBe(secondEstablishment)
+    expect(endAuthSessionIfCurrent(secondEstablishment, 'unauthorized')).toBe(true)
+    expect(getAuthSession()).toBeNull()
   })
 })

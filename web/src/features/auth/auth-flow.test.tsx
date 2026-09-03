@@ -1,20 +1,45 @@
 import { act, cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { MemoryRouter, Route, Routes, type InitialEntry } from 'react-router-dom'
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  type InitialEntry,
+} from 'react-router-dom'
 
+import { apiFetch } from '../../api/http/api-fetch'
 import { AuthProvider } from './auth-provider'
 import { PublicOnlyRoute, RequireAuth } from './auth-routes'
 import { AuthError, type CognitoAuthClient, type SignInCredentials } from './cognito-auth-client'
 import { endAuthSession, establishAuthSession } from './session-bridge'
 import { SignInPage } from './sign-in-page'
+import { useAuth } from './use-auth'
 
 afterEach(() => {
   vi.useRealTimers()
   cleanup()
   endAuthSession('logout')
   window.sessionStorage.clear()
+  vi.unstubAllGlobals()
 })
+
+function ProtectedPage({ title }: { title: string }) {
+  const location = useLocation()
+  const { signOut } = useAuth()
+  return (
+    <>
+      <h1>{title}</h1>
+      <button type="button" onClick={signOut}>
+        Sign out
+      </button>
+      <output data-testid="current-location">
+        {`${location.pathname}${location.search}${location.hash}`}
+      </output>
+    </>
+  )
+}
 
 const renderFlow = (
   client: Pick<CognitoAuthClient, 'signIn'>,
@@ -36,7 +61,15 @@ const renderFlow = (
             path="/positions"
             element={
               <RequireAuth>
-                <h1>Positions</h1>
+                <ProtectedPage title="Positions" />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/explain"
+            element={
+              <RequireAuth>
+                <ProtectedPage title="Explain" />
               </RequireAuth>
             }
           />
@@ -46,6 +79,23 @@ const renderFlow = (
   )
 
 describe('authentication flow', () => {
+  it('preserves the expiry reason from expired storage during cold bootstrap', async () => {
+    window.sessionStorage.setItem(
+      'trade-ledger.auth-session.v1',
+      JSON.stringify({
+        accessToken: 'expired-stored-token',
+        email: 'demo@trade-ledger.local',
+        expiresAt: Date.now() - 1,
+      }),
+    )
+
+    renderFlow({ signIn: vi.fn() })
+
+    expect(await screen.findByRole('heading', { name: 'Sign in to the ledger' })).toBeVisible()
+    expect(screen.getByText('Your session ended. Sign in again to continue.')).toBeVisible()
+    expect(window.sessionStorage.getItem('trade-ledger.auth-session.v1')).toBeNull()
+  })
+
   it('redirects an anonymous user, signs in, and returns to the protected route', async () => {
     const signIn = vi.fn(async (credentials: SignInCredentials) =>
       Promise.resolve({
@@ -128,19 +178,99 @@ describe('authentication flow', () => {
     expect(screen.getByText('Your session ended. Sign in again to continue.')).toBeVisible()
   })
 
-  it('preserves the unauthorized reason when the route guard redirects to sign-in', () => {
+  it('returns to the exact Explain URL after an expiry redirect and sign-in', async () => {
+    const returnTo = '/explain?symbol=ACME&question=tax%20impact#answer'
+    const signIn = vi.fn(async (credentials: SignInCredentials) =>
+      Promise.resolve({
+        accessToken: 'renewed-token',
+        email: credentials.email,
+        expiresAt: Date.now() + 60_000,
+      }),
+    )
+    establishAuthSession({
+      accessToken: 'expired-token',
+      email: 'demo@trade-ledger.local',
+      expiresAt: Date.now() + 60_000,
+    })
+    const user = userEvent.setup()
+    renderFlow({ signIn }, [returnTo])
+
+    expect(screen.getByRole('heading', { name: 'Explain' })).toBeVisible()
+    act(() => endAuthSession('expired'))
+
+    expect(screen.getByRole('heading', { name: 'Sign in to the ledger' })).toBeVisible()
+    expect(screen.getByText('Your session ended. Sign in again to continue.')).toBeVisible()
+    await user.type(screen.getByLabelText(/Password/u), 'demo-password')
+    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+
+    expect(await screen.findByRole('heading', { name: 'Explain' })).toBeVisible()
+    expect(screen.getByTestId('current-location')).toHaveTextContent(returnTo)
+  })
+
+  it('returns to the exact Explain URL after a 401 redirect and sign-in', async () => {
+    const returnTo = '/explain?symbol=ACME&question=wash%20sale#answer'
+    const signIn = vi.fn(async (credentials: SignInCredentials) =>
+      Promise.resolve({
+        accessToken: 'renewed-token',
+        email: credentials.email,
+        expiresAt: Date.now() + 60_000,
+      }),
+    )
     establishAuthSession({
       accessToken: 'rejected-token',
       email: 'demo@trade-ledger.local',
       expiresAt: Date.now() + 60_000,
     })
-    renderFlow({ signIn: vi.fn() })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Promise.resolve(new Response(null, { status: 401 }))),
+    )
+    const user = userEvent.setup()
+    renderFlow({ signIn }, [returnTo])
 
-    expect(screen.getByRole('heading', { name: 'Positions' })).toBeVisible()
-    act(() => endAuthSession('unauthorized'))
+    expect(screen.getByRole('heading', { name: 'Explain' })).toBeVisible()
+    await act(async () => {
+      await expect(apiFetch('/api/explain', { method: 'POST' })).rejects.toMatchObject({
+        status: 401,
+      })
+    })
 
     expect(screen.getByRole('heading', { name: 'Sign in to the ledger' })).toBeVisible()
     expect(screen.getByText('Your session ended. Sign in again to continue.')).toBeVisible()
+    await user.type(screen.getByLabelText(/Password/u), 'demo-password')
+    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+
+    expect(await screen.findByRole('heading', { name: 'Explain' })).toBeVisible()
+    expect(screen.getByTestId('current-location')).toHaveTextContent(returnTo)
+  })
+
+  it('does not restore a protected return path after an explicit logout', async () => {
+    const signIn = vi.fn(async (credentials: SignInCredentials) =>
+      Promise.resolve({
+        accessToken: 'new-login-token',
+        email: credentials.email,
+        expiresAt: Date.now() + 60_000,
+      }),
+    )
+    establishAuthSession({
+      accessToken: 'logged-out-token',
+      email: 'demo@trade-ledger.local',
+      expiresAt: Date.now() + 60_000,
+    })
+    const user = userEvent.setup()
+    renderFlow({ signIn }, ['/explain?symbol=ACME#answer'])
+
+    await user.click(screen.getByRole('button', { name: 'Sign out' }))
+
+    expect(screen.getByRole('heading', { name: 'Sign in to the ledger' })).toBeVisible()
+    expect(
+      screen.queryByText('Your session ended. Sign in again to continue.'),
+    ).not.toBeInTheDocument()
+    await user.type(screen.getByLabelText(/Password/u), 'demo-password')
+    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+
+    expect(await screen.findByRole('heading', { name: 'Positions' })).toBeVisible()
+    expect(screen.getByTestId('current-location')).toHaveTextContent('/positions')
   })
 
   it('rejects an unsafe return path after successful sign-in', async () => {

@@ -103,7 +103,7 @@
           "Fills"
         ],
         "summary": "Accepts and queues a fill.",
-        "description": "The fill is persisted before it is published for asynchronous processing.",
+        "description": "The API returns 202 only after SQS accepts the fill. The processor later persists and applies\nit transactionally.",
         "operationId": "CreateFill",
         "requestBody": {
           "description": "The executed fill to accept.",
@@ -252,7 +252,7 @@
         }
       }
     },
-    "/api/positions/{symbol}/lots": {
+    "/api/positions/lots": {
       "get": {
         "tags": [
           "Positions"
@@ -263,8 +263,8 @@
         "parameters": [
           {
             "name": "symbol",
-            "in": "path",
-            "description": "The case-insensitive market symbol.",
+            "in": "query",
+            "description": "The case-insensitive market symbol supplied as a query parameter.",
             "required": true,
             "schema": {
               "type": "string"

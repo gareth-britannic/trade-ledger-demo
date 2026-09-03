@@ -33,7 +33,12 @@ public sealed class ApiInfrastructureTests(TradeLedgerApiFactory factory)
         var paths = root.GetProperty("paths");
         OperationId(paths, "/api/fills", "post").ShouldBe("CreateFill");
         OperationId(paths, "/api/positions", "get").ShouldBe("GetPositions");
-        OperationId(paths, "/api/positions/{symbol}/lots", "get").ShouldBe("GetPositionLots");
+        var lotsOperation = paths.GetProperty("/api/positions/lots").GetProperty("get");
+        lotsOperation.GetProperty("operationId").GetString().ShouldBe("GetPositionLots");
+        var symbolParameter = lotsOperation.GetProperty("parameters").EnumerateArray()
+            .Single(parameter => parameter.GetProperty("name").GetString() == "symbol");
+        symbolParameter.GetProperty("in").GetString().ShouldBe("query");
+        symbolParameter.GetProperty("required").GetBoolean().ShouldBeTrue();
         OperationId(paths, "/api/explain", "post").ShouldBe("ExplainLedger");
         root.GetProperty("components").GetProperty("securitySchemes")
             .TryGetProperty("Bearer", out _).ShouldBeTrue();

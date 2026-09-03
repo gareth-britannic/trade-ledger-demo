@@ -87,7 +87,8 @@ export const getCreateFillUrl = () => {
 }
 
 /**
- * The fill is persisted before it is published for asynchronous processing.
+ * The API returns 202 only after SQS accepts the fill. The processor later persists and applies
+ * it transactionally.
  * @summary Accepts and queues a fill.
  */
 export const createFill = async (createFillRequest?: CreateFillRequest, options?: Parameters<typeof apiFetch>[1]): Promise<createFillResponse> => {

@@ -33,22 +33,22 @@ public sealed class PositionsControllerTests
     }
 
     [Fact]
-    public async Task GetLots_PassesSymbolAndCancellationToken_AndMapsEveryLot()
+    public async Task GetLots_PassesSlashSymbolAndCancellationToken_AndMapsEveryLot()
     {
         var id = Guid.NewGuid();
         var openedAt = new DateTimeOffset(2026, 9, 2, 12, 30, 0, TimeSpan.Zero);
         using var cancellation = new CancellationTokenSource();
         var service = new Mock<IPositionQueryService>();
-        service.Setup(instance => instance.GetOpenLotsAsync("acme", cancellation.Token))
-            .ReturnsAsync([new LotResult(id, "ACME", 10m, 12m, openedAt)]);
+        service.Setup(instance => instance.GetOpenLotsAsync("BRK/B", cancellation.Token))
+            .ReturnsAsync([new LotResult(id, "BRK/B", 10m, 12m, openedAt)]);
         var controller = new PositionsController(service.Object);
 
-        var action = await controller.GetLots("acme", cancellation.Token);
+        var action = await controller.GetLots("BRK/B", cancellation.Token);
 
         var ok = action.Result.ShouldBeOfType<OkObjectResult>();
         ok.StatusCode.ShouldBe(StatusCodes.Status200OK);
         ok.Value.ShouldBeOfType<List<LotResponse>>()
-            .ShouldBe([new LotResponse(id, "ACME", 10m, 12m, openedAt)]);
+            .ShouldBe([new LotResponse(id, "BRK/B", 10m, 12m, openedAt)]);
         service.VerifyAll();
         service.VerifyNoOtherCalls();
     }

@@ -10,6 +10,7 @@ export * from './createFillRequest';
 export * from './createFillResponse';
 export * from './explainRequest';
 export * from './explainResponse';
+export * from './getPositionLotsParams';
 export * from './lotResponse';
 export * from './positionResponse';
 export * from './problemDetails';
