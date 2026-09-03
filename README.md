@@ -1,6 +1,6 @@
 # Trade Ledger
 
-> **Work in progress:** this repository is an actively developed portfolio project. The backend, FIFO accounting domain, asynchronous processor, local infrastructure, AWS reference architecture, and automated tests are in place. The React client and real Ollama-backed LLM integration described in the product spec are not implemented yet; the LLM boundary and a deterministic in-memory implementation are now present. See [Current status](#current-status) for the exact boundary.
+> **Work in progress:** this repository is an actively developed portfolio project. The backend, FIFO accounting domain, asynchronous processor, local infrastructure, AWS reference architecture, and first React client are in place. The browser client now covers local sign-in, positions, fill acceptance, open lots, and deterministic ledger explanations; production web hosting and real Ollama-backed narration are not implemented. See [Current status](#current-status) for the exact boundary.
 
 Trade Ledger accepts executed trade fills, maintains long-only positions, and calculates realised profit and loss using first-in, first-out (FIFO) lot matching. It is built to demonstrate production-minded C#, event-driven processing, relational persistence, infrastructure as code, and explicit engineering trade-offs in a system that can be inspected and run locally.
 
@@ -13,6 +13,7 @@ Trade Ledger accepts executed trade fills, maintains long-only positions, and ca
 - Transactional PostgreSQL ledger rebuilds protected by per-symbol advisory locks.
 - ASP.NET Core API design with FluentValidation, Problem Details, Swagger, health checks, correlation IDs, and structured JSON logs.
 - Cognito-style JWT authentication that runs entirely offline with one automatically registered local demo user.
+- A strict React/TypeScript client with accessible dialogs, generated OpenAPI/TanStack Query bindings, validated forms, deterministic component tests, and a real-stack Playwright critical path.
 - Terraform modules for both a working LocalStack loop and a production-shaped AWS reference architecture.
 - Unit, hosted API integration, real PostgreSQL/LocalStack end-to-end, and mocked-provider Terraform tests.
 - Deliberate restraint: no generic repository, MediatR, CQRS split, AutoMapper, Kubernetes, service mesh, or event-sourcing framework without a problem that earns them.
@@ -70,15 +71,15 @@ This table describes the repository at the current commit, not the intended fina
 | Ordering and idempotency | Implemented and locally integration tested | Execution-time replay, fill-ID tie-breaker, PostgreSQL advisory lock, `processed_at`, and a real LocalStack/Postgres test |
 | Position and lot queries | Implemented | REST endpoints backed by EF Core repositories |
 | Explain endpoint | Partially implemented | `ILlmClient` isolates the model boundary and `InMemoryLlmClient` produces deterministic repository-backed tool-style answers; it does not call a real model yet |
-| Local environment | Implemented for backend/infrastructure | Docker Compose runs PostgreSQL, free LocalStack Community, and `cognito-local`; Terraform creates the FIFO queues, Lambda, IAM, logs, and event mapping |
+| Local environment | Implemented for backend, infrastructure, and browser development | Docker Compose runs PostgreSQL, free LocalStack Community, and `cognito-local`; Terraform creates the FIFO queues, Lambda, IAM, logs, and event mapping; Vite runs the React client on the host and proxies only to loopback services |
 | AWS architecture | Written and plan tested, never deployed | WAF, HTTPS ALB, private ECS, private Lambda, RDS, SQS/DLQ, network and security-group modules |
 | CloudWatch observability | Partially declared, never deployed | Terraform defines a 30-day API log group, a 7-day processor log group, ECS Container Insights, and WAF metrics; there are no alarms, dashboards, metric filters, custom application metrics, or tracing |
-| Web client | Not implemented | No `web/` project exists yet; React/Vite/TypeScript remains planned work |
+| Web client | First production-quality local slice implemented; deployment remains WIP | `web/` contains the React/TypeScript/Vite application, Cognito-local sign-in, positions, accessible Add Fill dialog and lots drawer, Explain flow, generated API client, tests, and CI checks. There is no production hosting configuration. |
 | Local LLM | Foundation implemented | The application-owned `ILlmClient` port and deterministic local adapter are in place; Ollama, model tool calling, and provider retry/timeout policy remain planned work |
 | Authentication and access model | Implemented for the demo | Protected routes validate locally issued Cognito-compatible access tokens. Bootstrap registers one demo user. Every authenticated user would access the same ledger because tenants, accounts, and row ownership are deliberately outside this demo's scope. |
-| Full local main-flow verification | Implemented and run in CI | The external suite drives the hosted API through real LocalStack SQS/Lambda and PostgreSQL, including ordering, redelivery, rollback, and advisory-lock behavior |
+| Full local main-flow verification | Backend suite runs in CI; browser flow is an explicit local check | The external .NET suite drives the hosted API through real LocalStack SQS/Lambda and PostgreSQL. `web/e2e/trade-ledger.spec.ts` exercises sign-in, asynchronous fill processing, lots, Explain, and logout against that running stack. |
 
-The next product milestones are the React client and an Ollama-backed explanation flow that never performs ledger arithmetic itself. Authentication is implemented; multi-user data isolation is outside the current build specification.
+The next product milestone is an Ollama-backed explanation flow that never performs ledger arithmetic itself. The React client and authentication flow are implemented for the local portfolio demo; production web deployment and multi-user data isolation remain outside the current build specification.
 
 ## Architecture
 
@@ -86,18 +87,18 @@ The next product milestones are the React client and an Ollama-backed explanatio
 
 ```mermaid
 flowchart LR
-    Client["API client<br/>future React UI"] -->|"username + password<br/>local demo only"| Cognito["Cognito-compatible issuer<br/>cognito-local"]
-    Cognito -->|"signed access token"| Client
-    Client -->|"HTTP + bearer token"| API["ASP.NET Core API<br/>.NET 10"]
+    Web["React + TypeScript<br/>Vite web client"] -->|"/cognito dev proxy<br/>username + password"| Cognito["Cognito-compatible issuer<br/>cognito-local"]
+    Cognito -->|"signed access token"| Web
+    Web -->|"relative /api dev proxy<br/>Bearer access token"| API["ASP.NET Core API<br/>.NET 10"]
     API -->|"MessageGroupId = symbol<br/>DeduplicationId = fill ID"| Queue["SQS FIFO<br/>+ FIFO DLQ"]
     Queue -->|"event-source mapping<br/>partial-batch failures"| Processor["ARM64 Lambda processor<br/>.NET 10 custom runtime"]
     Processor -->|"persist fill + advisory lock<br/>transactional ordered replay"| DB["PostgreSQL<br/>fills, lots, positions,<br/>realised_pnl_entries"]
     API -->|"positions, lots,<br/>deterministic explain queries"| DB
 ```
 
-Locally, PostgreSQL, free LocalStack Community, and the open-source `cognito-local` emulator run in Docker. The API runs on the host with `dotnet run`; LocalStack runs the packaged Lambda and event-source mapping, while `cognito-local` supplies the user pool, registration, login, signing keys, and JWT discovery endpoints. The root `docker-compose.yml` does **not** currently contain the API or a web client.
+Locally, PostgreSQL, free LocalStack Community, and the open-source `cognito-local` emulator run in Docker. The API runs on the host with `dotnet run`, and the web client runs on the host with Vite. LocalStack runs the packaged Lambda and event-source mapping, while `cognito-local` supplies the user pool, bootstrap-owned registration, login, signing keys, and JWT discovery endpoints. Vite proxies relative `/api` and `/health` requests to the API and `/cognito` requests to the emulator, so local browser development does not require a backend CORS change. Every proxy target and Compose service port is loopback-only. The root `docker-compose.yml` intentionally contains neither the API nor the web client.
 
-The AWS reference uses the same application boundaries with a public WAF/HTTPS ALB, a private ECS Fargate API, a private processor Lambda, SQS FIFO, and private RDS PostgreSQL. It is tested as Terraform configuration but has never been applied to an AWS account. See [`infra/README.md`](infra/README.md) before considering any AWS deployment because the reference stack creates chargeable resources.
+The AWS reference uses the same backend boundaries with a public WAF/HTTPS ALB, a private ECS Fargate API, a private processor Lambda, SQS FIFO, and private RDS PostgreSQL. It does not host the web client. It is tested as Terraform configuration but has never been applied to an AWS account. See [`infra/README.md`](infra/README.md) before considering any AWS deployment because the reference stack creates chargeable resources.
 
 ### Processing flow
 
@@ -132,6 +133,15 @@ infra/
 └── envs/
     ├── local/               LocalStack queue and Lambda processor
     └── aws/                 Never-deployed AWS reference composition
+
+web/
+├── openapi/                 Versioned API contract snapshot
+├── scripts/                 Local public-config and OpenAPI refresh helpers
+└── src/
+    ├── api/                 Orval-generated client and handwritten HTTP boundary
+    ├── app/                 Providers, routing and shell composition
+    ├── components/ui/       Accessible reusable presentation primitives
+    └── features/            Authentication, positions, fills and explanations
 ```
 
 The dependency rules are pragmatic rather than ceremonial:
@@ -141,6 +151,7 @@ The dependency rules are pragmatic rather than ceremonial:
 - `Application` owns orchestration, persistence interfaces, and the `ILlmClient` boundary; it depends on `Domain` plus the `Common` messaging abstraction.
 - `Database` implements application-owned persistence boundaries and maps EF entities to domain/application records.
 - `Api` and `Processor` are composition roots. They wire dependencies and adapt external input; they do not own FIFO accounting logic.
+- `web/src/api/generated` is generated from the checked-in OpenAPI snapshot and is never hand edited. Feature code owns browser orchestration, TanStack Query owns server state, and the HTTP boundary owns bearer attachment, Problem Details normalization, and `401` session clearing.
 
 ## Domain rules
 
@@ -175,11 +186,31 @@ The current scope is one authenticated shared ledger, not a multi-tenant product
 | --- | --- | --- |
 | `POST` | `/api/fills` | Validates and queues a fill; returns `202` with its stable fill ID after SQS accepts the message |
 | `GET` | `/api/positions` | Returns positions with open quantity, weighted average unit cost, and realised P&L |
-| `GET` | `/api/positions/{symbol}/lots` | Returns open lots in FIFO order; returns `404` for a valid but unknown symbol |
+| `GET` | `/api/positions/lots?symbol={symbol}` | Returns open lots in FIFO order; returns `404` for a valid but unknown symbol |
 | `POST` | `/api/explain` | Returns visible deterministic tool calls and a ledger-derived answer; real LLM narration is not implemented yet |
 | `GET` | `/health` | Returns aggregate PostgreSQL health |
 
+The lots symbol is a query parameter so valid symbols containing `/`, such as `BRK/B`, round-trip without
+being interpreted as path segments. URL-encode the parameter when constructing this request manually.
+
 Validation and not-found responses use `application/problem+json`. The API accepts or creates an `X-Correlation-Id`, returns it in the response, places it in structured logs, and sends it as an SQS message attribute so one fill can be followed from HTTP request to processor execution.
+
+## Web client and generated API contract
+
+The `web/` application is a focused local portfolio client rather than a copied admin dashboard. React Router composes the sign-in, Positions, and Explain routes; TanStack Query owns server state; React Hook Form and Zod validate interactive input; and Radix Dialog supplies the accessible modal and drawer behavior. Authentication is intentionally narrow: the sign-in form sends email and password to `cognito-local` using `USER_PASSWORD_AUTH`, keeps the returned **access token** in memory or `sessionStorage`, and clears it on logout, expiry, or an API `401`. There is no registration route.
+
+The browser never calculates FIFO lots, average cost, or realised P&L. It renders the API's values and treats fill submission as asynchronous: `POST /api/fills` returning `202 Accepted` means SQS accepted the request, not that PostgreSQL already contains it. The UI says “Accepted” or “Queued,” performs a bounded positions refresh, and offers a manual refresh if no change becomes observable. There is no fill-status endpoint and no optimistic ledger mutation.
+
+The live API contract is snapshotted at `web/openapi/trade-ledger.v1.json`. Orval generates DTOs and TanStack Query clients into `web/src/api/generated`; that directory must not be edited manually. With the API running locally, refresh and verify the generated boundary from the repository root with:
+
+```bash
+cd web
+npm run api:pull
+npm run api:generate
+npm run api:check
+```
+
+`api:pull` is the intentional contract-update step. `api:check` regenerates from the committed snapshot and fails when the generated client differs from the checked-in result.
 
 ## Run locally
 
@@ -188,6 +219,7 @@ Validation and not-found responses use `application/problem+json`. The API accep
 - Git.
 - Docker Engine/Desktop with Docker Compose v2. Docker is required.
 - .NET 10 SDK. CI currently pins `10.0.400`.
+- Node.js `22.23.2` and npm 10. The Node version is pinned in `web/.nvmrc`; the committed lockfile records the npm dependency graph.
 - Terraform. CI currently uses `1.13.5`; the local root requires `>= 1.5.0` and the AWS reference root requires `>= 1.7.0`.
 - AWS CLI v2, used only against LocalStack by the local scripts.
 - `curl` and `zip`.
@@ -207,39 +239,48 @@ dotnet tool restore
 
 NuGet lock files are committed, so `--locked-mode` makes a local restore use the same dependency graph as CI.
 
-### 2. Start and provision the backend dependencies
+### 2. Start the local stack, API, and web client
+
+From the repository root, use two terminals. Terminal 1 provisions the dependencies, loads the generated Cognito configuration, supplies the queue URL, and runs the API:
 
 ```bash
 deploy/scripts/bootstrap-all.sh
+source .generated/local-cognito.env
+export FillQueue__Url="$(terraform -chdir=infra/envs/local output -raw fill_queue_url)"
+dotnet run --project src/TradeLedger.Api --launch-profile http
+```
+
+Terminal 2 installs the locked frontend dependencies and starts Vite:
+
+```bash
+cd web && npm ci && npm run dev
+```
+
+`npm run dev` first runs the dev-only public-configuration helper, then starts Vite at <http://127.0.0.1:5173>. Sign in with `demo@trade-ledger.local` and the effective password recorded in `.generated/local-cognito.env`. There is intentionally no registration or password-reset flow. Authentication demonstrates access-token issuance and validation, but every authenticated identity sees the same shared demo ledger; the application is not multitenant.
+
+To verify the emulated queue resources independently after bootstrap, run:
+
+```bash
 deploy/scripts/verify-local-sqs.sh
 ```
 
 The bootstrap script:
 
 1. starts PostgreSQL 16, LocalStack Community, and `cognito-local` with Docker Compose;
-2. creates a local user pool and public app client, registers and confirms `demo@trade-ledger.local`, and writes the generated IDs to the ignored `.generated/local-cognito.env` file;
+2. creates a local user pool and public app client, registers and confirms `demo@trade-ledger.local`, and writes the generated authority, identifiers, and effective local demo password to the ignored `.generated/local-cognito.env` file;
 3. applies the EF Core migrations;
 4. publishes and zips the self-contained ARM64 processor;
 5. runs Terraform against LocalStack to create the FIFO queue, FIFO DLQ, Lambda, IAM/log resources, and event-source mapping.
 
-The local demo credentials are `demo@trade-ledger.local` / `TradeLedgerDemo123!`. They are deliberately non-secret development credentials and must never be reused outside this local environment. `get-local-token.sh` performs `USER_PASSWORD_AUTH` against the emulator; there is no application registration screen because bootstrap owns demo-user provisioning.
+The local demo email is `demo@trade-ledger.local`. Bootstrap uses `TradeLedgerDemo123!` unless `TRADE_LEDGER_LOCAL_USER_PASSWORD` overrides it, then records the effective password in the ignored generated environment file. These are disposable local-development credentials and must never be reused elsewhere. `get-local-token.sh` and the web sign-in flow perform `USER_PASSWORD_AUTH` against the emulator; there is no application registration screen because bootstrap owns demo-user provisioning. The password is entered by the operator and is never copied into the frontend source or bundle.
 
 LocalStack state is not persisted by Compose. After its container is recreated, Terraform may report that the emulated resources were deleted and create them again. PostgreSQL and Cognito emulator data are stored in the `postgres-data` and `cognito-data` Docker volumes. All three service ports are bound to `127.0.0.1`, so they are not exposed on every host interface.
 
-`.generated/local-cognito.env` contains only disposable local emulator identifiers. The entire `.generated` directory is ignored by Git and can be deleted; rerun `bootstrap-all.sh` to recreate it before using `get-local-token.sh` or starting the API.
+`.generated/local-cognito.env` contains disposable local emulator configuration, public identifiers, and the effective local demo password. It does not contain an issued access token. The entire `.generated` directory is ignored by Git and must never be served by the web client or committed; rerun `bootstrap-all.sh` to recreate it before using `get-local-token.sh`, starting the API, or configuring the frontend. The frontend's dev-only configuration script reads only the public app-client ID and writes it with the local region to ignored `web/.env.local`; it does not copy the password or the source file.
 
-### 3. Start the API
+With both terminals running, open:
 
-Load the generated Cognito authority/client configuration, export the Terraform queue output, and start the API:
-
-```bash
-source .generated/local-cognito.env
-export FillQueue__Url="$(terraform -chdir=infra/envs/local output -raw fill_queue_url)"
-dotnet run --project src/TradeLedger.Api --launch-profile http
-```
-
-Then open:
-
+- Web client: <http://127.0.0.1:5173>
 - Health: <http://localhost:5232/health>
 - Swagger UI: <http://localhost:5232/swagger>
 
@@ -255,7 +296,7 @@ Expected response:
 {"status":"healthy"}
 ```
 
-### 4. Exercise the local main flow
+### 3. Exercise the local main flow from the command line
 
 In another terminal, request an access token for the registered demo user. The helper outputs only the token, making it safe to use in command substitution:
 
@@ -293,10 +334,10 @@ Processing is asynchronous. Poll the API until `DEMO` reports an open quantity o
 
 ```bash
 curl -fsS -H "Authorization: Bearer $TOKEN" http://localhost:5232/api/positions
-curl -fsS -H "Authorization: Bearer $TOKEN" http://localhost:5232/api/positions/DEMO/lots
+curl -fsS -H "Authorization: Bearer $TOKEN" 'http://localhost:5232/api/positions/lots?symbol=DEMO'
 ```
 
-### 5. Run the automated real-infrastructure proof
+### 4. Run the automated real-infrastructure proof
 
 The external suite drives the real API, PostgreSQL, LocalStack queue, and Lambda processor:
 
@@ -309,7 +350,7 @@ TRADE_LEDGER_RUN_LOCALSTACK_INTEGRATION=1 dotnet test \
 
 This is the automated version of the executable local demonstration.
 
-### 6. Stop the local environment
+### 5. Stop the local environment
 
 ```bash
 deploy/scripts/local-down.sh
@@ -328,6 +369,29 @@ Run the normal .NET suite:
 ```bash
 dotnet test TradeLedger.sln --configuration Release
 ```
+
+Run the deterministic frontend checks from the repository root:
+
+```bash
+cd web
+npm ci
+npm run api:check
+npm run lint
+npm run typecheck
+npm test
+npm run test:coverage
+npm run build
+```
+
+The Vitest suite uses React Testing Library, `user-event`, and MSW; it does not need the local backend. The Playwright critical path is deliberately separate because it signs in through the real local Cognito emulator, reads positions, queues a unique fill, waits for its asynchronously applied position, opens the lots drawer, asks Explain, and logs out. With the two processes from [Run locally](#run-locally) still running, execute it from another terminal:
+
+```bash
+source .generated/local-cognito.env
+cd web
+npm run test:e2e:real
+```
+
+Install the Playwright Chromium binary once with `cd web && npx playwright install chromium` if it is not already present. The browser test reads the effective local password from the generated environment; it is not embedded in test source or the frontend bundle.
 
 At the time of writing this passes 127 unit tests and 16 non-external API/integration tests. Four external integration tests are explicitly skipped during the ordinary run unless they are enabled.
 
@@ -353,9 +417,11 @@ The tests that carry the main design claims are:
 | Transaction rollback and locking | Failed units of work leave no partial state, and concurrent work for one symbol is serialized by the database lock |
 | FIFO batch failure handling | A failed message blocks later records from the same group while independent groups can succeed |
 | API contract and authentication tests | Protected endpoints, access-token/client-ID rules, validation, Problem Details, correlation IDs, Swagger operations, queue publication, and query behavior |
+| Frontend component and integration tests | Authentication routing and `401` clearing, Problem Details display, fill validation and stable retries, bounded refresh, positions/lots states, Explain output, and modal/drawer keyboard behavior |
+| Real browser critical path | The opt-in Playwright test signs in through `cognito-local` and exercises the complete browser-to-queue-to-ledger flow against running local services |
 | Terraform tests | Resource shape, least-privilege boundaries, encryption, deletion controls, private workloads and queue semantics |
 
-CI enforces both line and branch coverage at 90%, restores the committed NuGet dependency graph in locked mode, builds the full .NET solution, validates loopback-only Compose port bindings and both Terraform roots, runs mocked-provider tests for the AWS modules and environment, and runs the external PostgreSQL/LocalStack suite in a dedicated ARM64 job. Terraform initialization uses a per-job provider cache and three bounded attempts so multiple roots reuse the same verified provider binary and a transient registry/CDN reset does not fail the build immediately. At the time of writing, the CI-equivalent local collection reports 93.70% line coverage and 91.03% branch coverage. Mocked Terraform tests verify configuration invariants; they do not claim that the AWS stack has run in a real account.
+CI enforces both line and branch coverage at 90% for .NET, restores the committed NuGet dependency graph in locked mode, builds the full solution, validates loopback-only Compose port bindings and both Terraform roots, runs mocked-provider tests for the AWS modules and environment, and runs the external PostgreSQL/LocalStack suite in a dedicated ARM64 job. A separate frontend job installs with `npm ci`, checks Orval generation drift, lints, typechecks, runs Vitest with its configured coverage gates, and creates the production bundle. The real-stack Playwright flow remains an explicit local check rather than being folded into the fast frontend job. Terraform initialization uses a per-job provider cache and three bounded attempts so multiple roots reuse the same verified provider binary and a transient registry/CDN reset does not fail the build immediately. At the time of writing, the CI-equivalent .NET collection reports 93.70% line coverage and 91.03% branch coverage. Mocked Terraform tests verify configuration invariants; they do not claim that the AWS stack has run in a real account.
 
 ## Design decisions and trade-offs
 
@@ -381,7 +447,7 @@ There is no `IRepository<T>` because each data boundary has different operations
 
 ## Known limitations
 
-- The repository is a WIP and has no React UI yet.
+- The React UI implements the complete local demo flow, but it remains a WIP for deployment: the repository has no production web-hosting, cache/CDN, or production browser-auth configuration.
 - The explanation endpoint uses the deterministic `InMemoryLlmClient`; Ollama and real model tool calling are not present.
 - Authentication protects the API and local bootstrap registers one Cognito user, but the project deliberately models one shared ledger. It has no application user/account table, tenants, self-service registration UI, or row-level ownership. Any additional authenticated user would see the same data; multi-user isolation is not claimed by this demo.
 - A fill accepted by SQS is not persisted to PostgreSQL until the asynchronous processor receives it; there is no fill-status endpoint yet.

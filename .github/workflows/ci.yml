@@ -88,6 +88,33 @@ jobs:
             TestResults/Merged/Cobertura.xml
           if-no-files-found: error
 
+  web:
+    name: Build and test React frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Check generated API client drift
+        run: npm run api:check
+      - name: Lint frontend
+        run: npm run lint
+      - name: Typecheck frontend
+        run: npm run typecheck
+      - name: Test frontend with coverage
+        run: npm run test:coverage
+      - name: Build frontend
+        run: npm run build
+
   lint:
     name: Lint and validate Terraform
     runs-on: ubuntu-latest
