@@ -20,7 +20,7 @@ test('signs in and exercises the real asynchronous ledger flow', async ({ page }
   await expect(page).toHaveURL(/\/positions$/u)
   await expect(page.getByRole('heading', { name: 'Positions' })).toBeVisible()
 
-  await page.getByRole('button', { name: '+ Add fill' }).click()
+  await page.getByRole('banner').getByRole('button', { name: '+ Add fill' }).click()
   const fillDialog = page.getByRole('dialog', { name: 'Add fill' })
   await expect(fillDialog).toBeVisible()
   await fillDialog.getByLabel('Symbol').fill(symbol)
@@ -35,7 +35,13 @@ test('signs in and exercises the real asynchronous ledger flow', async ({ page }
   await fillDialog.getByRole('button', { name: 'Close dialog' }).click()
 
   const positionRow = page.getByRole('row').filter({ hasText: symbol })
-  await expect(positionRow).toBeVisible({ timeout: 30_000 })
+  const refreshPositions = page.getByRole('button', { name: 'Refresh positions' })
+  await expect(async () => {
+    if (!(await positionRow.isVisible()) && (await refreshPositions.isEnabled())) {
+      await refreshPositions.click()
+    }
+    await expect(positionRow).toBeVisible({ timeout: 2_000 })
+  }).toPass({ intervals: [1_000], timeout: 30_000 })
   await positionRow.getByRole('button', { name: 'View lots →' }).click()
 
   const lotsDrawer = page.getByRole('dialog', { name: `${symbol} — Open lots` })

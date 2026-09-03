@@ -29,8 +29,8 @@
   --text-label: 0.6875rem;
   --text-label--line-height: 0.875rem;
   --text-label--letter-spacing: 0.09375rem;
-  --text-body: 0.875rem;
-  --text-body--line-height: 1.125rem;
+  --text-body: 1rem;
+  --text-body--line-height: 1.5rem;
   --text-data: 0.8125rem;
   --text-data--line-height: 1.125rem;
   --text-wordmark: 1.0625rem;
@@ -133,8 +133,8 @@
     background: var(--color-ground);
     color: var(--color-ink);
     font-family: var(--font-sans);
-    font-size: 0.875rem;
-    line-height: 1.125rem;
+    font-size: 1rem;
+    line-height: 1.5rem;
   }
 
   #root {
