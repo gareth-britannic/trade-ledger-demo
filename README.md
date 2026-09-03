@@ -201,9 +201,11 @@ No AWS account, AWS API key, or paid LocalStack licence is required. The local e
 ```bash
 git clone https://github.com/gareth-britannic/trade-ledger-demo.git
 cd trade-ledger-demo
-dotnet restore TradeLedger.sln
+dotnet restore TradeLedger.sln --locked-mode
 dotnet tool restore
 ```
+
+NuGet lock files are committed, so `--locked-mode` makes a local restore use the same dependency graph as CI.
 
 ### 2. Start and provision the backend dependencies
 
@@ -222,7 +224,9 @@ The bootstrap script:
 
 The local demo credentials are `demo@trade-ledger.local` / `TradeLedgerDemo123!`. They are deliberately non-secret development credentials and must never be reused outside this local environment. `get-local-token.sh` performs `USER_PASSWORD_AUTH` against the emulator; there is no application registration screen because bootstrap owns demo-user provisioning.
 
-LocalStack state is not persisted by Compose. After its container is recreated, Terraform may report that the emulated resources were deleted and create them again. PostgreSQL and Cognito emulator data are stored in the `postgres-data` and `cognito-data` Docker volumes.
+LocalStack state is not persisted by Compose. After its container is recreated, Terraform may report that the emulated resources were deleted and create them again. PostgreSQL and Cognito emulator data are stored in the `postgres-data` and `cognito-data` Docker volumes. All three service ports are bound to `127.0.0.1`, so they are not exposed on every host interface.
+
+`.generated/local-cognito.env` contains only disposable local emulator identifiers. The entire `.generated` directory is ignored by Git and can be deleted; rerun `bootstrap-all.sh` to recreate it before using `get-local-token.sh` or starting the API.
 
 ### 3. Start the API
 
@@ -311,7 +315,7 @@ This is the automated version of the executable local demonstration.
 deploy/scripts/local-down.sh
 ```
 
-This keeps the PostgreSQL volume. To delete the local database data as well:
+This keeps the PostgreSQL and Cognito emulator volumes. To delete both sets of local data as well:
 
 ```bash
 docker compose down --volumes
@@ -325,7 +329,7 @@ Run the normal .NET suite:
 dotnet test TradeLedger.sln --configuration Release
 ```
 
-At the time of writing this passes 123 unit tests and 16 non-external API/integration tests. Four external integration tests are explicitly skipped during the ordinary run unless they are enabled.
+At the time of writing this passes 127 unit tests and 16 non-external API/integration tests. Four external integration tests are explicitly skipped during the ordinary run unless they are enabled.
 
 After `bootstrap-all.sh`, run the same real-infrastructure suite used by CI with:
 
@@ -351,7 +355,7 @@ The tests that carry the main design claims are:
 | API contract and authentication tests | Protected endpoints, access-token/client-ID rules, validation, Problem Details, correlation IDs, Swagger operations, queue publication, and query behavior |
 | Terraform tests | Resource shape, least-privilege boundaries, encryption, deletion controls, private workloads and queue semantics |
 
-CI enforces both line and branch coverage at 90%, builds the full .NET solution, validates both Terraform roots, runs mocked-provider tests for the AWS modules and environment, and runs the external PostgreSQL/LocalStack suite in a dedicated ARM64 job. Mocked Terraform tests verify configuration invariants; they do not claim that the AWS stack has run in a real account.
+CI enforces both line and branch coverage at 90%, restores the committed NuGet dependency graph in locked mode, builds the full .NET solution, validates loopback-only Compose port bindings and both Terraform roots, runs mocked-provider tests for the AWS modules and environment, and runs the external PostgreSQL/LocalStack suite in a dedicated ARM64 job. Terraform initialization uses a per-job provider cache and three bounded attempts so multiple roots reuse the same verified provider binary and a transient registry/CDN reset does not fail the build immediately. At the time of writing, the CI-equivalent local collection reports 93.70% line coverage and 91.03% branch coverage. Mocked Terraform tests verify configuration invariants; they do not claim that the AWS stack has run in a real account.
 
 ## Design decisions and trade-offs
 

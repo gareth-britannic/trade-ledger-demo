@@ -30,7 +30,7 @@ export AWS_EC2_METADATA_DISABLED="true"
 export TF_VAR_aws_region="${AWS_REGION}"
 export TF_VAR_localstack_endpoint="${LOCALSTACK_ENDPOINT}"
 
-terraform -chdir="${STACK_DIR}" init
+"${SCRIPT_DIR}/terraform-init.sh" "${STACK_DIR}"
 terraform -chdir="${STACK_DIR}" apply -auto-approve
 
 echo

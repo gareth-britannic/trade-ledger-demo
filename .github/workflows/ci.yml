@@ -96,9 +96,12 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ""
       AWS_SESSION_TOKEN: ""
       AWS_EC2_METADATA_DISABLED: "true"
+      TF_PLUGIN_CACHE_DIR: ${{ runner.temp }}/terraform-plugin-cache
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Test Terraform init retry helper
+        run: tests/scripts/terraform-init-tests.sh
       - name: Validate local service bindings
         run: >-
           docker compose config --format json |
@@ -109,11 +112,11 @@ jobs:
       - name: Check Terraform formatting
         run: terraform fmt -check -recursive infra
       - name: Initialize local environment without a backend
-        run: terraform -chdir=infra/envs/local init -backend=false -input=false -lockfile=readonly
+        run: deploy/scripts/terraform-init.sh infra/envs/local -backend=false -input=false -lockfile=readonly
       - name: Validate local environment
         run: terraform -chdir=infra/envs/local validate
       - name: Initialize AWS environment without a backend
-        run: terraform -chdir=infra/envs/aws init -backend=false -input=false -lockfile=readonly
+        run: deploy/scripts/terraform-init.sh infra/envs/aws -backend=false -input=false -lockfile=readonly
       - name: Validate AWS environment
         run: terraform -chdir=infra/envs/aws validate
 
@@ -125,6 +128,7 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ""
       AWS_SESSION_TOKEN: ""
       AWS_EC2_METADATA_DISABLED: "true"
+      TF_PLUGIN_CACHE_DIR: ${{ runner.temp }}/terraform-plugin-cache
     strategy:
       fail-fast: false
       matrix:
@@ -143,7 +147,7 @@ jobs:
         with:
           terraform_version: 1.13.5
       - name: Initialize without a backend
-        run: terraform -chdir=${{ matrix.directory }} init -backend=false -input=false -lockfile=readonly
+        run: deploy/scripts/terraform-init.sh ${{ matrix.directory }} -backend=false -input=false -lockfile=readonly
       - name: Validate configuration
         run: terraform -chdir=${{ matrix.directory }} validate
       - name: Run mocked-provider tests
@@ -160,6 +164,7 @@ jobs:
       AWS_REGION: eu-west-2
       AWS_EC2_METADATA_DISABLED: "true"
       TRADE_LEDGER_RUN_LOCALSTACK_INTEGRATION: "1"
+      TF_PLUGIN_CACHE_DIR: ${{ runner.temp }}/terraform-plugin-cache
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

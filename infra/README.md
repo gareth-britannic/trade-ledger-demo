@@ -87,8 +87,9 @@ the NAT Elastic IP, NAT Gateway, ALB, WAF web ACL, log groups, and queues are go
 
 ## Local environment
 
-The local environment runs Postgres and LocalStack from the root
-`docker-compose.yml`. Terraform in `infra/envs/local` creates:
+The local environment runs PostgreSQL, LocalStack Community, and the open-source
+`cognito-local` emulator from the root `docker-compose.yml`. All host ports are
+bound to `127.0.0.1`. Terraform in `infra/envs/local` creates:
 
 - `trade-ledger-fills.fifo`, with content-based deduplication disabled so the
   producer must use the fill ID as `MessageDeduplicationId`.
@@ -103,6 +104,12 @@ Postgres is available at `localhost:55432` (database/user/password:
 `trade_ledger`). Override the host port with `TRADE_LEDGER_POSTGRES_PORT`; inside
 the Compose network it remains `postgres:5432`.
 
+The Cognito-compatible emulator is available at `localhost:9229`. Bootstrap
+creates a user pool, public app client, and confirmed local demo user, then writes
+their generated identifiers to the ignored `.generated/local-cognito.env` file.
+Authentication is local and free; it does not require an AWS account or paid
+LocalStack licence.
+
 ## Start
 
 From the repository root:
@@ -111,9 +118,10 @@ From the repository root:
 deploy/scripts/bootstrap-all.sh
 ```
 
-This starts both containers, applies database migrations, packages the ARM64
-Lambda, and initializes and applies Terraform.
-Terraform state and Postgres data are local and ignored by Git/Docker.
+This starts all three containers, provisions the local identity resources,
+applies database migrations, packages the ARM64 Lambda, and initializes and
+applies Terraform. Terraform state and generated Cognito identifiers are ignored
+by Git. PostgreSQL and Cognito emulator data remain in local Docker volumes.
 
 Run the real ordering and idempotency integration test with:
 
@@ -129,4 +137,5 @@ TRADE_LEDGER_RUN_LOCALSTACK_INTEGRATION=1 dotnet test \
 deploy/scripts/local-down.sh
 ```
 
-To remove the Postgres data volume as well, run `docker compose down --volumes`.
+To remove the PostgreSQL and Cognito emulator data volumes as well, run
+`docker compose down --volumes`.
