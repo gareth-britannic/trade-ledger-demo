@@ -43,4 +43,6 @@ The web client self-hosts IBM Plex Sans and IBM Plex Mono through the
 - Packaging project: Fontsource
 - Package version: `5.3.0`
 - Typeface license: SIL Open Font License 1.1
-- License files: distributed with each installed package as `LICENSE`
+- Distributed license files:
+  - `public/licenses/IBM-Plex-Sans-OFL-1.1.txt`
+  - `public/licenses/IBM-Plex-Mono-OFL-1.1.txt`
