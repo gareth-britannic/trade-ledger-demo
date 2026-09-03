@@ -19,7 +19,7 @@
     "test:e2e:real": "playwright test",
     "config:local": "node scripts/configure-local-env.mjs",
     "api:pull": "node scripts/pull-openapi.mjs",
-    "api:generate": "orval --config orval.config.ts",
+    "api:generate": "orval --config orval.config.ts && node scripts/normalize-generated-api.mjs",
     "api:check": "node scripts/check-generated-api.mjs"
   },
   "dependencies": {
